@@ -2,13 +2,13 @@ import { apiClient } from '@/api/client';
 import type { AuthUser } from '@/types/auth';
 
 export interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
 export interface RegisterRequest {
   businessName: string;
-  email: string;
+  username: string;
   password: string;
   name: string;
   industry?: string | null;

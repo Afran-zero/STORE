@@ -3,9 +3,6 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 import { ProtectedRoute, RoleGuard } from '@/routes/guards';
 import { LoginPage } from '@/pages/login-page';
-import { RegisterPage } from '@/pages/register-page';
-import { ForgotPasswordPage } from '@/pages/forgot-password-page';
-import { ResetPasswordPage } from '@/pages/reset-password-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { StoresPage } from '@/pages/stores-page';
 import { EmployeesPage } from '@/pages/employees-page';
@@ -35,9 +32,6 @@ function Shell({ children }: { children: JSX.Element }): JSX.Element {
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/dashboard" replace /> },
   { path: '/login', element: <LoginPage /> },
-  { path: '/register', element: <RegisterPage /> },
-  { path: '/forgot-password', element: <ForgotPasswordPage /> },
-  { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/403', element: <ForbiddenPage /> },
   { path: '/maintenance', element: <MaintenancePage /> },
   {

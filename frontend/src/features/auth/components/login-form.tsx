@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 const schema = z.object({
-  email: z.string().email(),
+  username: z.string().min(1),
   password: z.string().min(8),
 });
 
@@ -18,8 +18,8 @@ export function LoginForm({ onSubmit, isLoading }: { onSubmit: (values: LoginVal
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
       <div>
-        <Input placeholder="Email" {...register('email')} />
-        {errors.email ? <p className="mt-2 text-xs text-zinc-500">{errors.email.message}</p> : null}
+        <Input placeholder="Username" {...register('username')} />
+        {errors.username ? <p className="mt-2 text-xs text-zinc-500">{errors.username.message}</p> : null}
       </div>
       <div>
         <Input type="password" placeholder="Password" {...register('password')} />

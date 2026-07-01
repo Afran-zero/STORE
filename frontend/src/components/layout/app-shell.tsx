@@ -69,7 +69,7 @@ export function AppShell({ children }: AppShellProps): JSX.Element {
           </nav>
           <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
             <p className="font-semibold text-white">Signed in</p>
-            <p className="mt-1 truncate">{user?.email ?? 'Demo user'}</p>
+            <p className="mt-1 truncate">{user?.username ?? user?.name ?? 'Admin user'}</p>
             <Button variant="outline" className="mt-4 w-full border-white/10 bg-white text-zinc-950 hover:bg-zinc-100" onClick={() => void logout()}>
               Sign out
             </Button>

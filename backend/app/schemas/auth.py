@@ -5,20 +5,19 @@ from typing import Annotated
 from pydantic import BaseModel, Field
 
 
-EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 PASSWORD_PATTERN = r"^(?=.*\d).{8,}$"
 
 
 class RegisterRequest(BaseModel):
     businessName: Annotated[str, Field(min_length=1)]
-    email: Annotated[str, Field(pattern=EMAIL_PATTERN)]
+    username: Annotated[str, Field(min_length=3)]
     password: Annotated[str, Field(min_length=8, pattern=PASSWORD_PATTERN)]
     name: Annotated[str, Field(min_length=1)]
     industry: str | None = None
 
 
 class LoginRequest(BaseModel):
-    email: Annotated[str, Field(pattern=EMAIL_PATTERN)]
+    username: Annotated[str, Field(min_length=1)]
     password: Annotated[str, Field(min_length=1)]
 
 
@@ -27,7 +26,7 @@ class RefreshTokenRequest(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: Annotated[str, Field(pattern=EMAIL_PATTERN)]
+    username: Annotated[str, Field(min_length=1)]
 
 
 class ResetPasswordRequest(BaseModel):

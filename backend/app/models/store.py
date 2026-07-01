@@ -6,12 +6,13 @@ from app.models.base import TimestampedDocument
 
 
 StoreStatus = Literal["OPEN", "CLOSED", "INACTIVE"]
+StoreType = Literal["RETAIL", "FOOD", "WAREHOUSE", "KITCHEN"]
 
 
 class StoreDocument(TimestampedDocument):
     businessId: str
     name: str
-    type: str | None = None
+    type: StoreType
     status: StoreStatus = "CLOSED"
     location: dict[str, Any] | None = None
     openingHours: dict[str, Any] | None = None

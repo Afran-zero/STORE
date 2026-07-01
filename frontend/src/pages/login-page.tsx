@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { AuthPanel } from '@/features/auth/components/auth-panel';
@@ -17,7 +17,7 @@ export function LoginPage(): JSX.Element {
           isLoading={isLoading}
           onSubmit={async (values) => {
             try {
-              await login(values.email, values.password);
+              await login(values.username, values.password);
               navigate('/dashboard');
             } catch (error) {
               if (error instanceof ApiException && error.code === 'UNAUTHORIZED') {
@@ -28,10 +28,7 @@ export function LoginPage(): JSX.Element {
             }
           }}
         />
-        <div className="flex items-center justify-between text-sm text-zinc-500">
-          <Link to="/register" className="font-semibold text-zinc-950">Create account</Link>
-          <Link to="/forgot-password" className="font-semibold text-zinc-950">Forgot password?</Link>
-        </div>
+        <p className="text-sm text-zinc-500">Hardcoded auth mode is enabled. Use the configured admin username and password.</p>
       </AuthPanel>
     </div>
   );

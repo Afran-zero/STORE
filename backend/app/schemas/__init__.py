@@ -1,4 +1,5 @@
 from app.schemas.auth import *
+from app.schemas.ai import *
 from app.schemas.food import *
 from app.schemas.ingredient import *
 from app.schemas.recipe import *

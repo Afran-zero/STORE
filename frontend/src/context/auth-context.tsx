@@ -8,7 +8,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   accessToken: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   register: (input: authApi.RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   setSession: (accessToken: string, refreshToken: string, user?: AuthUser | null) => void;
@@ -27,10 +27,10 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     setUser(nextUser);
   };
 
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = async (username: string, password: string): Promise<void> => {
     setIsLoading(true);
     try {
-      const response = await authApi.login({ email, password });
+      const response = await authApi.login({ username, password });
       setSession(response.accessToken, response.refreshToken, response.user ?? null);
     } finally {
       setIsLoading(false);
