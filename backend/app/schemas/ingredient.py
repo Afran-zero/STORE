@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+
+
+class IngredientCreateRequest(BaseModel):
+    name: Annotated[str, Field(min_length=1)]
+    category: str | None = None
+    unit: Annotated[str, Field(min_length=1)]
+    minimumStock: float = 0
+    maximumStock: float | None = None
+    supplierId: str | None = None
+    purchasePrice: float = 0
+    barcode: str | None = None
+
+
+class IngredientUpdateRequest(BaseModel):
+    name: str | None = None
+    category: str | None = None
+    unit: str | None = None
+    minimumStock: float | None = None
+    maximumStock: float | None = None
+    supplierId: str | None = None
+    purchasePrice: float | None = None
+    barcode: str | None = None
+
+
+class PurchaseRequest(BaseModel):
+    ingredientId: str
+    quantity: float
+    unit: str
+    purchasePrice: float
+    supplierId: str
+
+
+class AdjustmentRequest(BaseModel):
+    ingredientId: str
+    quantity: float
+    reason: Annotated[str, Field(min_length=1)]
+    storeId: str | None = None
+
+
+class TransferRequest(BaseModel):
+    ingredientId: str
+    fromStoreId: str
+    toStoreId: str
+    quantity: float
+
+
+class AllocationRequest(BaseModel):
+    ingredientId: str
+    storeId: str
+    quantity: float
+    date: str
+
+
+class ReturnRequest(BaseModel):
+    ingredientId: str
+    storeId: str
+    quantity: float
+    date: str
+
+
+class SupplierCreateRequest(BaseModel):
+    name: Annotated[str, Field(min_length=1)]
+    contact: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+
+
+class SupplierUpdateRequest(BaseModel):
+    name: str | None = None
+    contact: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
