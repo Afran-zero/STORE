@@ -3,24 +3,59 @@ export const authKeys = {
 };
 
 export const dashboardKeys = {
-  overview: ['dashboard', 'overview'] as const,
+  overview: (storeId?: string) => ['dashboard', 'overview', storeId ?? null] as const,
 };
 
 export const storeKeys = {
-  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) => ['stores', 'list', filters] as const,
+  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) =>
+    ['stores', 'list', filters] as const,
   detail: (id: string) => ['stores', 'detail', id] as const,
 };
 
 export const inventoryKeys = {
-  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) => ['inventory', 'ingredients', filters] as const,
+  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) =>
+    ['inventory', 'ingredients', filters] as const,
   detail: (id: string) => ['inventory', 'ingredient', id] as const,
+  lowStock: () => ['inventory', 'low-stock'] as const,
 };
 
 export const recipeKeys = {
-  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) => ['recipes', 'list', filters] as const,
+  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) =>
+    ['recipes', 'list', filters] as const,
   detail: (id: string) => ['recipes', 'detail', id] as const,
+  cost: (id: string) => ['recipes', 'cost', id] as const,
 };
 
 export const foodKeys = {
-  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) => ['food', 'list', filters] as const,
+  list: (filters: Record<string, string | number | boolean | null | undefined> = {}) =>
+    ['food', 'list', filters] as const,
+  detail: (id: string) => ['food', 'detail', id] as const,
+};
+
+export const userKeys = {
+  list: () => ['users', 'list'] as const,
+  detail: (id: string) => ['users', 'detail', id] as const,
+};
+
+export const storeInventoryKeys = {
+  list: (storeId: string) => ['store-inventory', 'list', storeId] as const,
+  lowStock: (storeId: string) => ['store-inventory', 'low-stock', storeId] as const,
+};
+
+export const assignmentKeys = {
+  daily: (storeId: string, date: string) => ['assignments', 'daily', storeId, date] as const,
+  recent: (storeId: string) => ['assignments', 'recent', storeId] as const,
+};
+
+export const saleKeys = {
+  list: (storeId?: string) => ['sales', 'list', storeId ?? null] as const,
+  detail: (id: string) => ['sales', 'detail', id] as const,
+};
+
+export const forecastKeys = {
+  daily: (days: number) => ['forecasts', 'daily', days] as const,
+};
+
+export const notificationKeys = {
+  list: (storeId?: string) => ['notifications', 'list', storeId ?? null] as const,
 };

@@ -1,11 +1,17 @@
 import axios, { type AxiosError, type AxiosInstance } from 'axios';
 
 import { ApiException, type ApiError, type ApiSuccess } from '@/types/api';
+import {
+  clearStoredTokens,
+  getAccessToken,
+  getRefreshToken,
+  setStoredTokens,
+} from '@/lib/tokenStore';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
-let accessToken: string | null = null;
-let refreshToken: string | null = null;
+let accessToken: string | null = getAccessToken();
+let refreshToken: string | null = getRefreshToken();
 let isRefreshing = false;
 let queuedRequests: Array<(token: string | null) => void> = [];
 
@@ -17,11 +23,13 @@ function flushQueue(token: string | null): void {
 export function setTokens(nextAccessToken: string | null, nextRefreshToken: string | null): void {
   accessToken = nextAccessToken;
   refreshToken = nextRefreshToken;
+  setStoredTokens(nextAccessToken, nextRefreshToken);
 }
 
 export function clearTokens(): void {
   accessToken = null;
   refreshToken = null;
+  clearStoredTokens();
 }
 
 async function refreshSession(instance: AxiosInstance): Promise<string | null> {

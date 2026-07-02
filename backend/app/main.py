@@ -40,7 +40,7 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(_: Request, _: Exception) -> JSONResponse:
+async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content=error_payload("INTERNAL_SERVER_ERROR", "An unexpected error occurred"))
 
 

@@ -9,6 +9,10 @@ import { queryClient } from '@/lib/query-client';
 import { router } from '@/routes/router';
 import '@/index.css';
 
+if (import.meta.env.DEV) {
+  import('react-grab');
+}
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

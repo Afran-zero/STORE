@@ -6,24 +6,31 @@ from pydantic import BaseModel, Field
 
 
 class IngredientCreateRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     name: Annotated[str, Field(min_length=1)]
     category: str | None = None
     unit: Annotated[str, Field(min_length=1)]
     minimumStock: float = 0
     maximumStock: float | None = None
     supplierId: str | None = None
-    purchasePrice: float = 0
+    purchasePrice: float | None = None
+    costPerUnit: float | None = None
     barcode: str | None = None
 
 
 class IngredientUpdateRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     name: str | None = None
     category: str | None = None
     unit: str | None = None
+    currentStock: float | None = None
     minimumStock: float | None = None
     maximumStock: float | None = None
     supplierId: str | None = None
     purchasePrice: float | None = None
+    costPerUnit: float | None = None
     barcode: str | None = None
 
 

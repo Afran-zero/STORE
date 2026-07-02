@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 
 const schema = z.object({
   username: z.string().min(1),
-  password: z.string().min(8),
+  password: z.string().min(1),
 });
 
 type LoginValues = z.infer<typeof schema>;

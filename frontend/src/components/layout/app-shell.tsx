@@ -3,6 +3,8 @@ import { Bell, LayoutDashboard, Boxes, ClipboardList, Package, ReceiptText, Sett
 import { NavLink } from 'react-router-dom';
 
 import { useAuth } from '@/context/auth-context';
+import { useActiveStore } from '@/hooks/use-active-store';
+import { useLowStockToasts } from '@/hooks/use-low-stock-toasts';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -50,6 +52,8 @@ function NavItem({ to, label, icon: Icon }: { to: string; label: string; icon: t
 
 export function AppShell({ children }: AppShellProps): JSX.Element {
   const { user, logout } = useAuth();
+  const { storeId } = useActiveStore();
+  useLowStockToasts(storeId);
   const nav = user?.role === 'WORKER' ? workerNav : ownerNav;
 
   return (

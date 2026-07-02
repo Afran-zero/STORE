@@ -31,6 +31,10 @@ export async function logout(): Promise<void> {
   await apiClient.post('/api/v1/auth/logout');
 }
 
+export async function me(): Promise<AuthUser> {
+  return apiClient.get('/api/v1/auth/me');
+}
+
 export async function refreshToken(refreshToken: string): Promise<AuthTokens> {
   return apiClient.post('/api/v1/auth/refresh-token', { refreshToken });
 }

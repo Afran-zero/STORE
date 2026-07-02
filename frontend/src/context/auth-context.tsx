@@ -1,7 +1,12 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { clearTokens, setTokens } from '@/api/client';
 import * as authApi from '@/api/endpoints/auth';
+import {
+  getAccessToken,
+  getStoredUser,
+  setStoredUser,
+} from '@/lib/tokenStore';
 import type { AuthUser } from '@/types/auth';
 
 interface AuthContextValue {
@@ -17,12 +22,30 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [accessToken, setAccessToken] = useState<string | null>(() => getAccessToken());
   const [isLoading, setIsLoading] = useState(false);
+
+  // If we have a stored access token but no cached user, ask the backend for the profile
+  // so route guards (and RoleGuard) have something to work with after a page refresh.
+  useEffect(() => {
+    if (accessToken && !user) {
+      authApi
+        .me()
+        .then((profile) => {
+          setUser(profile ?? null);
+          setStoredUser(profile ?? null);
+        })
+        .catch(() => {
+          // Token is bad or expired; let the api interceptor try a refresh, or surface a login.
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setSession = (nextAccessToken: string, nextRefreshToken: string, nextUser: AuthUser | null = null): void => {
     setTokens(nextAccessToken, nextRefreshToken);
+    setStoredUser(nextUser);
     setAccessToken(nextAccessToken);
     setUser(nextUser);
   };
@@ -53,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       await authApi.logout();
     } finally {
       clearTokens();
+      setStoredUser(null);
       setUser(null);
       setAccessToken(null);
       setIsLoading(false);

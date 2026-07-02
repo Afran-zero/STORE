@@ -18,6 +18,8 @@ class CurrentUser(BaseModel):
     businessId: str | None = None
     role: str | None = None
     assignedStore: str | None = None
+    name: str | None = None
+    email: str | None = None
 
 
 async def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)] = None) -> CurrentUser:
@@ -29,4 +31,6 @@ async def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials |
         businessId=token_payload.get("businessId"),
         role=token_payload.get("role"),
         assignedStore=token_payload.get("assignedStore"),
+        name=token_payload.get("name"),
+        email=token_payload.get("email"),
     )

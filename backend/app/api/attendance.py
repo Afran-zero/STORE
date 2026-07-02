@@ -1,59 +1,43 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.services.attendance_service import AttendanceService
+from app.dependencies.auth import get_current_user
+from app.services.assignment_service import AssignmentService
+from app.database.client import get_database
 
-
-router = APIRouter(prefix="/attendance", tags=["attendance"])
-service = AttendanceService()
-
-
-@router.post("/clock-in", status_code=status.HTTP_201_CREATED)
-async def clock_in():
-    return await service.placeholder({}, message="Clock-in scaffold")
+router = APIRouter()
 
 
-@router.post("/clock-out", status_code=status.HTTP_201_CREATED)
-async def clock_out():
-    return await service.placeholder({}, message="Clock-out scaffold")
+def _bid(user) -> str:
+    return getattr(user, "businessId", None) or "business-default"
 
 
-@router.get("")
-async def list_attendance(userId: str | None = None, storeId: str | None = None, date: str | None = None):
-    return await service.placeholder([], message="Attendance list scaffold")
+@router.put("/daily")
+async def upsert_assignment(payload: dict, current_user=Depends(get_current_user), db=Depends(get_database)):
+    store_id = payload.get("storeId")
+    target_date = payload.get("date")
+    allocations = payload.get("allocations") or []
+    if not store_id or not target_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_PAYLOAD", "message": "storeId and date are required"},
+        )
+    service = AssignmentService(db)
+    result = await service.upsert_assignment(
+        business_id=_bid(current_user), store_id=store_id, target_date=target_date, allocations=allocations
+    )
+    return {"success": True, "data": result}
 
 
-@router.get("/{user_id}/history")
-async def history(user_id: str):
-    return await service.placeholder({"userId": user_id}, message="Attendance history scaffold")
+@router.get("/daily")
+async def get_assignment(date: str, storeId: str, current_user=Depends(get_current_user), db=Depends(get_database)):
+    service = AssignmentService(db)
+    result = await service.get_for_date(business_id=_bid(current_user), store_id=storeId, target_date=date)
+    return {"success": True, "data": result or {"storeId": storeId, "date": date, "allocations": []}}
 
 
-@router.post("/leave-request", status_code=status.HTTP_201_CREATED)
-async def leave_request():
-    return await service.placeholder({}, message="Leave request scaffold")
-
-
-@router.patch("/leave-request/{request_id}/approve")
-async def approve_leave(request_id: str):
-    return await service.placeholder({"requestId": request_id}, message="Leave approval scaffold")
-
-
-@router.get("/employees/{employee_id}/performance")
-async def employee_performance(employee_id: str):
-    return await service.placeholder({"employeeId": employee_id}, message="Employee performance scaffold")
-
-
-@router.get("/employees/{employee_id}/daily-target")
-async def employee_daily_target(employee_id: str):
-    return await service.placeholder({"employeeId": employee_id}, message="Employee target scaffold")
-
-
-@router.put("/employees/{employee_id}/daily-target")
-async def update_employee_daily_target(employee_id: str):
-    return await service.placeholder({"employeeId": employee_id}, message="Update employee target scaffold")
-
-
-@router.patch("/employees/{employee_id}/assign-store")
-async def assign_employee_store(employee_id: str):
-    return await service.placeholder({"employeeId": employee_id}, message="Assign employee store scaffold")
+@router.get("/recent")
+async def list_recent(storeId: str, current_user=Depends(get_current_user), db=Depends(get_database)):
+    service = AssignmentService(db)
+    return {"success": True, "data": await service.list_recent(business_id=_bid(current_user), store_id=storeId)}

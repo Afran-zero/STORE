@@ -1,23 +1,37 @@
+"""Password hashing + JWT helpers.
+
+Uses ``bcrypt`` directly (passlib currently has a known incompatibility with
+``bcrypt>=4.1`` on Python 3.14). All admin/worker passwords round-trip through
+``hash_password`` and ``verify_password``.
+"""
 from __future__ import annotations
 
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.config import get_settings
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt has a hard 72-byte limit on the password input; truncate silently.
+def _truncate(password: str) -> bytes:
+    return password.encode("utf-8")[:72]
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash a plaintext password using bcrypt."""
+    return bcrypt.hashpw(_truncate(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """Constant-time bcrypt comparison; tolerant of length mismatches."""
+    try:
+        return bcrypt.checkpw(_truncate(plain_password), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def _encode_token(payload: dict[str, Any], *, secret: str, expires_delta: timedelta) -> str:
@@ -55,3 +69,8 @@ def is_token_valid(token: str, *, refresh: bool = False) -> bool:
         return True
     except JWTError:
         return False
+
+
+def safe_compare(a: str, b: str) -> bool:
+    """Constant-time string comparison for secrets."""
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))

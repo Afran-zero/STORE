@@ -1,90 +1,238 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from typing import Annotated, Any
 
-from app.schemas.ingredient import AdjustmentRequest, AllocationRequest, IngredientCreateRequest, IngredientUpdateRequest, PurchaseRequest, ReturnRequest, SupplierCreateRequest, SupplierUpdateRequest, TransferRequest
-from app.services.inventory_service import InventoryService
+from fastapi import APIRouter, Depends, Query, status
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.core.exceptions import ConflictError, NotFoundError
+from app.core.response import success_payload
+from app.database.client import get_database_dependency
+from app.dependencies.auth import CurrentUser, get_current_user
+from app.dependencies.rbac import require_role
+from app.schemas.ingredient import (
+    AdjustmentRequest,
+    AllocationRequest,
+    IngredientCreateRequest,
+    IngredientUpdateRequest,
+    PurchaseRequest,
+    ReturnRequest,
+    TransferRequest,
+)
+from app.services.inventory_log_service import InventoryLogService
+from app.services.inventory_service import IngredientConflictError, IngredientNotFoundError, InventoryService
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
-service = InventoryService()
+
+
+def _service(db: AsyncIOMotorDatabase = Depends(get_database_dependency)) -> InventoryService:
+    return InventoryService(db)
+
+
+def _log_service(db: AsyncIOMotorDatabase = Depends(get_database_dependency)) -> InventoryLogService:
+    return InventoryLogService(db)
 
 
 @router.get("/ingredients")
-async def list_ingredients(storeId: str | None = None, category: str | None = None, lowStock: bool | None = None):
-    return await service.placeholder([], message="List ingredients scaffold")
+async def list_ingredients(
+    category: Annotated[str | None, Query()] = None,
+    lowStock: Annotated[bool | None, Query()] = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryService = Depends(_service),
+):
+    rows = await service.list_ingredients(business_id=current_user.businessId or "", category=category, low_stock=lowStock)
+    return success_payload(rows)
 
 
 @router.post("/ingredients", status_code=status.HTTP_201_CREATED)
-async def create_ingredient(_: IngredientCreateRequest):
-    return await service.placeholder({}, message="Create ingredient scaffold")
+async def create_ingredient(
+    body: IngredientCreateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryService = Depends(_service),
+):
+    payload: dict[str, Any] = body.model_dump()
+    if payload.get("costPerUnit") is None and payload.get("purchasePrice") is not None:
+        payload["costPerUnit"] = payload.pop("purchasePrice")
+    else:
+        payload.pop("purchasePrice", None)
+    payload.pop("maximumStock", None)
+    payload.pop("supplierId", None)
+    payload.pop("barcode", None)
+    try:
+        item = await service.create_ingredient(business_id=current_user.businessId or "", payload=payload)
+    except IngredientConflictError as exc:
+        raise ConflictError("INGREDIENT_EXISTS", f"Ingredient '{exc}' already exists")
+    except ValueError as exc:
+        raise ConflictError("VALIDATION_ERROR", str(exc))
+    return success_payload(item, message="Ingredient created")
+
+
+@router.get("/ingredients/{ingredient_id}")
+async def get_ingredient(
+    ingredient_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryService = Depends(_service),
+):
+    try:
+        item = await service.get_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id)
+    except IngredientNotFoundError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    return success_payload(item)
 
 
 @router.put("/ingredients/{ingredient_id}")
-async def update_ingredient(ingredient_id: str, _: IngredientUpdateRequest):
-    return await service.placeholder({"ingredientId": ingredient_id}, message="Update ingredient scaffold")
+async def update_ingredient(
+    ingredient_id: str,
+    body: IngredientUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryService = Depends(_service),
+):
+    payload: dict[str, Any] = body.model_dump(exclude_none=True)
+    if payload.get("costPerUnit") is None and payload.get("purchasePrice") is not None:
+        payload["costPerUnit"] = payload.pop("purchasePrice")
+    else:
+        payload.pop("purchasePrice", None)
+    payload.pop("maximumStock", None)
+    payload.pop("supplierId", None)
+    payload.pop("barcode", None)
+    try:
+        item = await service.update_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id, payload=payload)
+    except IngredientNotFoundError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    except IngredientConflictError as exc:
+        raise ConflictError("INGREDIENT_EXISTS", f"Ingredient '{exc}' already exists")
+    return success_payload(item, message="Ingredient updated")
 
 
-@router.post("/purchase", status_code=status.HTTP_201_CREATED)
-async def purchase(_: PurchaseRequest):
-    return await service.placeholder({}, message="Purchase scaffold")
-
-
-@router.post("/adjust", status_code=status.HTTP_201_CREATED)
-async def adjust(_: AdjustmentRequest):
-    return await service.placeholder({}, message="Adjustment scaffold")
-
-
-@router.post("/transfer", status_code=status.HTTP_201_CREATED)
-async def transfer(_: TransferRequest):
-    return await service.placeholder({}, message="Transfer scaffold")
-
-
-@router.post("/allocate", status_code=status.HTTP_201_CREATED)
-async def allocate(_: AllocationRequest):
-    return await service.placeholder({}, message="Allocation scaffold")
-
-
-@router.post("/return", status_code=status.HTTP_201_CREATED)
-async def return_stock(_: ReturnRequest):
-    return await service.placeholder({}, message="Return scaffold")
-
-
-@router.get("/history/{ingredient_id}")
-async def history(ingredient_id: str, page: int = 1, limit: int = 20):
-    return await service.placeholder({"ingredientId": ingredient_id, "page": page, "limit": limit}, message="History scaffold")
+@router.delete("/ingredients/{ingredient_id}", status_code=status.HTTP_200_OK)
+async def delete_ingredient(
+    ingredient_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryService = Depends(_service),
+):
+    try:
+        await service.delete_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id)
+    except IngredientNotFoundError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    return success_payload({"deleted": True}, message="Ingredient deleted")
 
 
 @router.get("/low-stock")
-async def low_stock():
-    return await service.placeholder([], message="Low stock scaffold")
+async def low_stock(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryService = Depends(_service),
+):
+    rows = await service.low_stock(business_id=current_user.businessId or "")
+    return success_payload(rows)
 
 
-@router.get("/variance-report")
-async def variance_report(storeId: str | None = None, date: str | None = None):
-    return await service.placeholder({"storeId": storeId, "date": date}, message="Variance report scaffold")
+@router.post("/purchase", status_code=status.HTTP_201_CREATED)
+async def purchase(
+    body: PurchaseRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryLogService = Depends(_log_service),
+):
+    try:
+        result = await service.purchase(
+            business_id=current_user.businessId or "",
+            ingredient_id=body.ingredientId,
+            quantity=body.quantity,
+            unit_price=body.purchasePrice,
+            supplier_id=body.supplierId or None,
+            worker_id=current_user.userId,
+        )
+    except LookupError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    return success_payload(result, message="Purchase recorded")
 
 
-@router.get("/suppliers")
-async def list_suppliers():
-    return await service.placeholder([], message="List suppliers scaffold")
+@router.post("/adjust", status_code=status.HTTP_201_CREATED)
+async def adjust(
+    body: AdjustmentRequest,
+    current_user: CurrentUser = Depends(require_role(["MANAGER", "OWNER", "ADMIN"])),
+    service: InventoryLogService = Depends(_log_service),
+):
+    try:
+        result = await service.adjust(
+            business_id=current_user.businessId or "",
+            ingredient_id=body.ingredientId,
+            quantity=body.quantity,
+            reason=body.reason,
+            store_id=body.storeId,
+            worker_id=current_user.userId,
+        )
+    except LookupError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    return success_payload(result, message="Adjustment recorded")
 
 
-@router.post("/suppliers", status_code=status.HTTP_201_CREATED)
-async def create_supplier(_: SupplierCreateRequest):
-    return await service.placeholder({}, message="Create supplier scaffold")
+@router.post("/transfer", status_code=status.HTTP_201_CREATED)
+async def transfer(
+    body: TransferRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryLogService = Depends(_log_service),
+):
+    try:
+        result = await service.transfer(
+            business_id=current_user.businessId or "",
+            ingredient_id=body.ingredientId,
+            from_store_id=body.fromStoreId,
+            to_store_id=body.toStoreId,
+            quantity=body.quantity,
+            worker_id=current_user.userId,
+        )
+    except LookupError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    except ValueError as exc:
+        raise ConflictError("INSUFFICIENT_STOCK", str(exc))
+    return success_payload(result, message="Transfer recorded")
 
 
-@router.put("/suppliers/{supplier_id}")
-async def update_supplier(supplier_id: str, _: SupplierUpdateRequest):
-    return await service.placeholder({"supplierId": supplier_id}, message="Update supplier scaffold")
+@router.post("/allocate", status_code=status.HTTP_201_CREATED)
+async def allocate(
+    body: AllocationRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryLogService = Depends(_log_service),
+):
+    try:
+        result = await service.allocate(
+            business_id=current_user.businessId or "",
+            ingredient_id=body.ingredientId,
+            store_id=body.storeId,
+            quantity=body.quantity,
+            worker_id=current_user.userId,
+        )
+    except LookupError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    except ValueError as exc:
+        raise ConflictError("INSUFFICIENT_STOCK", str(exc))
+    return success_payload(result, message="Allocation recorded")
 
 
-@router.get("/suppliers/{supplier_id}/purchase-history")
-async def supplier_purchase_history(supplier_id: str):
-    return await service.placeholder({"supplierId": supplier_id}, message="Supplier purchase history scaffold")
+@router.post("/return", status_code=status.HTTP_201_CREATED)
+async def return_stock(
+    body: ReturnRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryLogService = Depends(_log_service),
+):
+    try:
+        result = await service.return_stock(
+            business_id=current_user.businessId or "",
+            ingredient_id=body.ingredientId,
+            store_id=body.storeId,
+            quantity=body.quantity,
+            worker_id=current_user.userId,
+        )
+    except LookupError:
+        raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
+    return success_payload(result, message="Return recorded")
 
 
-@router.get("/valuation")
-async def valuation():
-    return await service.placeholder({}, message="Valuation scaffold")
+@router.get("/history/{ingredient_id}")
+async def history(
+    ingredient_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: InventoryLogService = Depends(_log_service),
+):
+    rows = await service.history(business_id=current_user.businessId or "", ingredient_id=ingredient_id)
+    return success_payload(rows)

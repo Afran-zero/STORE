@@ -5,11 +5,13 @@ from app.api.analytics import router as analytics_router
 from app.api.attendance import router as attendance_router
 from app.api.auth import router as auth_router
 from app.api.food import router as food_router
+from app.api.forecast import router as forecast_router
 from app.api.inventory import router as inventory_router
 from app.api.notifications import router as notifications_router
 from app.api.recipes import router as recipes_router
 from app.api.reports import router as reports_router
 from app.api.sales import router as sales_router
+from app.api.store_inventory import router as store_inventory_router
 from app.api.stores import router as stores_router
 from app.api.tickets import router as tickets_router
 from app.api.users import router as users_router
@@ -22,8 +24,10 @@ api_router.include_router(stores_router)
 api_router.include_router(inventory_router)
 api_router.include_router(recipes_router)
 api_router.include_router(food_router)
-api_router.include_router(sales_router)
-api_router.include_router(attendance_router)
+api_router.include_router(store_inventory_router, prefix="/store-inventory")
+api_router.include_router(sales_router, prefix="/sales")
+api_router.include_router(attendance_router, prefix="/assignments")
+api_router.include_router(forecast_router, prefix="/forecasts")
 api_router.include_router(tickets_router)
 api_router.include_router(reports_router)
 api_router.include_router(analytics_router)

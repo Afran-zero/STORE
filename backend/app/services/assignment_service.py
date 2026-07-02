@@ -1,10 +1,28 @@
 from __future__ import annotations
 
-from typing import Any
+from datetime import date as date_cls
+from typing import Any, Dict, List, Optional
 
-from app.services.base import BaseService
+from app.repositories.assignment_repository import AssignmentRepository
+from app.repositories.store_inventory_repository import StoreInventoryRepository
 
 
-class AssignmentService(BaseService):
-    async def placeholder(self, data: Any = None, *, message: str = "Assignment module placeholder") -> dict[str, Any]:
-        return await super().placeholder(data, message=message)
+class AssignmentService:
+    def __init__(self, db: Any) -> None:
+        self.repo = AssignmentRepository(db)
+        self.inventory = StoreInventoryRepository(db)
+
+    async def upsert_assignment(self, *, business_id: str, store_id: str, target_date: str, allocations: List[Dict[str, Any]]) -> Dict[str, Any]:
+        for line in allocations:
+            ingredient_id = line.get("ingredientId")
+            qty = float(line.get("quantity") or 0)
+            if not ingredient_id:
+                continue
+            await self.inventory.upsert(business_id=business_id, store_id=store_id, ingredient_id=ingredient_id, allocated=qty)
+        return await self.repo.upsert(business_id=business_id, store_id=store_id, date=target_date, allocations=allocations)
+
+    async def get_for_date(self, *, business_id: str, store_id: str, target_date: str) -> Dict[str, Any]:
+        return await self.repo.get_by_date(business_id=business_id, store_id=store_id, date=target_date)
+
+    async def list_recent(self, *, business_id: str, store_id: str) -> List[Dict[str, Any]]:
+        return await self.repo.list_by_store(business_id=business_id, store_id=store_id)

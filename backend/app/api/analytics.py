@@ -1,45 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi import Query
+from fastapi import APIRouter, Depends, Query
 
+from app.dependencies.auth import get_current_user
 from app.services.analytics_service import AnalyticsService
+from app.database.client import get_database
+
+router = APIRouter()
 
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
-service = AnalyticsService()
+def _bid(user) -> str:
+    return getattr(user, "businessId", None) or "business-default"
 
 
-@router.get("/revenue")
-async def revenue(storeId: str | None = Query(default=None), from_: str | None = Query(default=None, alias="from"), to: str | None = Query(default=None, alias="to"), groupBy: str | None = Query(default=None)):
-    return await service.placeholder({"storeId": storeId, "from": from_, "to": to, "groupBy": groupBy}, message="Revenue analytics scaffold")
-
-
-@router.get("/profit")
-async def profit(storeId: str | None = Query(default=None), from_: str | None = Query(default=None, alias="from"), to: str | None = Query(default=None, alias="to")):
-    return await service.placeholder({"storeId": storeId, "from": from_, "to": to}, message="Profit analytics scaffold")
-
-
-@router.get("/inventory")
-async def inventory():
-    return await service.placeholder({}, message="Inventory analytics scaffold")
-
-
-@router.get("/employees")
-async def employees():
-    return await service.placeholder({}, message="Employee analytics scaffold")
-
-
-@router.get("/stores")
-async def stores():
-    return await service.placeholder({}, message="Store analytics scaffold")
-
-
-@router.get("/food")
-async def food():
-    return await service.placeholder({}, message="Food analytics scaffold")
-
-
-@router.get("/export")
-async def export(type: str = "csv", report: str = "revenue"):
-    return await service.placeholder({"type": type, "report": report}, message="Export analytics scaffold")
+@router.get("/dashboard")
+async def dashboard(storeId: str | None = Query(default=None), current_user=Depends(get_current_user), db=Depends(get_database)):
+    service = AnalyticsService(db)
+    return {"success": True, "data": await service.dashboard(business_id=_bid(current_user), store_id=storeId)}
