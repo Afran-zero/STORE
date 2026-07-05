@@ -15,6 +15,7 @@ class RecipeIngredientInput(BaseModel):
 
 class RecipeCreateRequest(BaseModel):
     name: Annotated[str, Field(min_length=1)]
+    foodItemId: str | None = None
     ingredients: list[RecipeIngredientInput] = []
     preparationSteps: list[str] = []
     servingSize: float | None = None
@@ -22,6 +23,7 @@ class RecipeCreateRequest(BaseModel):
 
 class RecipeUpdateRequest(BaseModel):
     name: str | None = None
+    foodItemId: str | None = None
     ingredients: list[RecipeIngredientInput] | None = None
     preparationSteps: list[str] | None = None
     servingSize: float | None = None

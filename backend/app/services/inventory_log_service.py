@@ -3,9 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.repositories.food_repository import FoodRepository
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.inventory_log_repository import InventoryLogRepository
 from app.repositories.purchase_order_repository import PurchaseOrderRepository
+from app.repositories.recipe_repository import RecipeRepository
+from app.repositories.store_inventory_repository import StoreInventoryRepository
 
 
 class InventoryLogService:
@@ -21,6 +24,10 @@ class InventoryLogService:
         self.ingredients = IngredientRepository(db)
         self.logs = InventoryLogRepository(db)
         self.purchase_orders = PurchaseOrderRepository(db)
+        # Used by allocate_food (recipe-based allocation).
+        self.food = FoodRepository(db)
+        self.recipes = RecipeRepository(db)
+        self.store_inventory = StoreInventoryRepository(db)
 
     async def _current_stock(self, *, business_id: str, ingredient_id: str) -> float:
         item = await self.ingredients.get(business_id=business_id, ingredient_id=ingredient_id)
@@ -263,3 +270,128 @@ class InventoryLogService:
 
     async def history(self, *, business_id: str, ingredient_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         return await self.logs.history(business_id=business_id, ingredient_id=ingredient_id, limit=limit)
+
+    # ---------------------------------------------------------------------
+    # Recipe-based allocation
+    # ---------------------------------------------------------------------
+
+    async def allocate_food(
+        self,
+        *,
+        business_id: str,
+        food_id: str,
+        store_id: str,
+        quantity: float,
+        worker_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Allocate ``quantity`` units of a food item to ``store_id`` (legacy path).
+
+        Reads each ingredient's master pool (``ingredients.currentStock``) and
+        atomically mirrors the deduction onto ``store_inventory`` via
+        ``StoreInventoryService.try_consume_pool``.
+
+        On success, returns ``{storeId, foodId, foodName, quantity, deductions: [...]}``
+        where ``deductions`` contains per-ingredient before/after/quantity records.
+        """
+        if quantity <= 0:
+            raise ValueError("quantity must be positive")
+
+        food = await self.food.get(business_id=business_id, food_id=food_id)
+        if not food:
+            raise LookupError(food_id)
+
+        recipe = await self.recipes.get_active_for_food(business_id=business_id, food_id=food_id)
+        if not recipe:
+            raise ValueError("No active recipe for food item")
+        ingredients_list = recipe.get("ingredients") or []
+        if not ingredients_list:
+            raise ValueError("Recipe has no ingredient lines")
+
+        # Pre-flight against the master pool.
+        from app.services.store_inventory_service import StoreInventoryService
+        store_inv = StoreInventoryService(self.db)
+
+        plan: List[Dict[str, Any]] = []
+        for line in ingredients_list:
+            ing_id = line.get("ingredientId")
+            per_unit = float(line.get("quantity") or 0)
+            if not ing_id or per_unit <= 0:
+                continue
+            required = per_unit * float(quantity)
+            ing_doc = await self.ingredients.get(business_id=business_id, ingredient_id=ing_id)
+            if not ing_doc:
+                raise ValueError(f"Ingredient {ing_id} no longer exists")
+            pool_before = float(ing_doc.get("currentStock") or 0)
+            if pool_before < required:
+                raise ValueError(
+                    f"Insufficient stock pool for ingredient {ing_id}: "
+                    f"have {pool_before}, need {required}. Restock from Inventory first."
+                )
+            plan.append({
+                "ingredientId": ing_id,
+                "required": required,
+                "before": pool_before,
+            })
+
+        if not plan:
+            raise ValueError("Recipe has no usable ingredient lines")
+
+        deductions: List[Dict[str, Any]] = []
+        used_transaction = False
+        for entry in plan:
+            result = await store_inv.try_consume_pool(
+                business_id=business_id,
+                store_id=store_id,
+                ingredient_id=entry["ingredientId"],
+                amount=entry["required"],
+            )
+            if not result.get("ok"):
+                for done in deductions:
+                    await store_inv.refund_pool(
+                        business_id=business_id,
+                        store_id=store_id,
+                        ingredient_id=done["ingredientId"],
+                        amount=done["required"],
+                    )
+                raise ValueError(
+                    f"Insufficient stock pool for ingredient {entry['ingredientId']}: "
+                    f"have {result.get('poolCurrent', 0)}, need {entry['required']}. "
+                    f"Restock from Inventory first."
+                )
+            if result.get("transactional"):
+                used_transaction = True
+            deductions.append({
+                "ingredientId": entry["ingredientId"],
+                "quantity": entry["required"],
+                "before": entry["before"],
+                "after": result.get("poolAfter"),
+            })
+
+        # Best-effort inventory log entries (outside any transaction).
+        now = datetime.now(timezone.utc)
+        for d in deductions:
+            await self.logs.insert(
+                payload={
+                    "businessId": business_id,
+                    "ingredientId": d["ingredientId"],
+                    "storeId": store_id,
+                    "workerId": worker_id,
+                    "action": "ALLOCATION",
+                    "quantity": -d["quantity"],
+                    "before": d["before"],
+                    "after": d["after"],
+                    "referenceType": "food_allocation",
+                    "referenceId": str(food_id),
+                    "reason": f"Allocated {quantity}× {food.get('name') or food_id}",
+                    "timestamp": now,
+                }
+            )
+
+        return {
+            "storeId": store_id,
+            "foodId": food_id,
+            "foodName": food.get("name"),
+            "quantity": int(quantity),
+            "transactional": used_transaction,
+            "deductions": deductions,
+        }

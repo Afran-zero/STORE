@@ -42,7 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   };
 
   const login = async (email: string, password: string): Promise<void> => {
-    const response = await apiClient.post('/api/v1/auth/login', { email, password }) as { accessToken: string; refreshToken: string; user?: AuthUser };
+    // Backend LoginRequest expects `username` (which it lowercases and matches against
+    // either the hardcoded admin username or any user's email).
+    const response = await apiClient.post('/api/v1/auth/login', { username: email, password }) as { accessToken: string; refreshToken: string; user?: AuthUser };
     await setTokens(response.accessToken, response.refreshToken);
     if (response.user) {
       await setStoredUser(JSON.stringify(response.user));

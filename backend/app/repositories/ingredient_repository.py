@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict
 
 from bson import ObjectId
 
@@ -81,3 +81,75 @@ class IngredientRepository(BaseRepository):
 
     async def low_stock(self, *, business_id):
         return await self.list(business_id=business_id, low_stock=True)
+
+    # -------------------------------------------------------------------------
+    # Pool (master pantry) atomic helpers
+    # -------------------------------------------------------------------------
+    # `ingredients.currentStock` is treated as a shared "pool" that any store
+    # can draw from. These helpers do the atomic read-and-decrement/increment
+    # so allocation/sale flows can rely on them without losing updates.
+
+    async def decrement_pool(self, *, business_id: str, ingredient_id: str, amount: float, session=None):
+        """Atomically decrement the master pool by `amount` if there's enough.
+
+        Returns ``{"ok": True, "before": float, "after": float, "doc": {...}}`` on success.
+        Returns ``{"ok": False, "reason": "insufficient_pool" | "not_found", "current": float|None, "doc": {...}|None}`` on failure.
+        Pass ``session=...`` to participate in a Mongo transaction.
+        """
+        from bson import ObjectId as _Oid
+        try:
+            oid = _Oid(ingredient_id)
+        except Exception:
+            return {"ok": False, "reason": "not_found", "current": None, "doc": None}
+        kwargs: Dict[str, Any] = {"return_document": True}
+        if session is not None:
+            kwargs["session"] = session
+        result = await self.collection.find_one_and_update(
+            {"_id": oid, "businessId": business_id, "currentStock": {"$gte": amount}},
+            {"$inc": {"currentStock": -amount}, "$set": {"updatedAt": datetime.now(timezone.utc)}},
+            **kwargs,
+        )
+        if result is None:
+            find_kwargs: Dict[str, Any] = {}
+            if session is not None:
+                find_kwargs["session"] = session
+            doc = await self.collection.find_one({"_id": oid, "businessId": business_id}, **find_kwargs)
+            if not doc:
+                return {"ok": False, "reason": "not_found", "current": None, "doc": None}
+            return {
+                "ok": False,
+                "reason": "insufficient_pool",
+                "current": float(doc.get("currentStock") or 0),
+                "doc": self._serialize(doc),
+            }
+        before = float(result.get("currentStock") or 0) + amount  # post-$inc value is "after"
+        return {
+            "ok": True,
+            "before": before,
+            "after": float(result.get("currentStock") or 0),
+            "doc": self._serialize(result),
+        }
+
+    async def increment_pool(self, *, business_id: str, ingredient_id: str, amount: float, session=None):
+        """Atomically increment the master pool by `amount` (refund path)."""
+        from bson import ObjectId as _Oid
+        try:
+            oid = _Oid(ingredient_id)
+        except Exception:
+            return {"ok": False, "reason": "not_found", "doc": None}
+        kwargs: Dict[str, Any] = {"return_document": True}
+        if session is not None:
+            kwargs["session"] = session
+        result = await self.collection.find_one_and_update(
+            {"_id": oid, "businessId": business_id},
+            {"$inc": {"currentStock": amount}, "$set": {"updatedAt": datetime.now(timezone.utc)}},
+            **kwargs,
+        )
+        if not result:
+            return {"ok": False, "reason": "not_found", "doc": None}
+        return {
+            "ok": True,
+            "before": float(result.get("currentStock") or 0) - amount,
+            "after": float(result.get("currentStock") or 0),
+            "doc": self._serialize(result),
+        }

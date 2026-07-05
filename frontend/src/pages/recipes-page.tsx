@@ -23,6 +23,7 @@ import {
   useUpdateRecipeMutation,
 } from '@/features/recipes/hooks/use-recipes';
 import { useIngredients } from '@/features/inventory/hooks/use-ingredients';
+import { useFood } from '@/features/food/hooks/use-food';
 import type { Recipe } from '@/api/endpoints/recipes';
 import { ApiException } from '@/types/api';
 
@@ -33,9 +34,11 @@ const lineSchema = z.object({
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
+  foodItemId: z.string().optional().default(''),
   description: z.string().optional().default(''),
   yield: z.coerce.number().min(1).optional().default(1),
   status: z.enum(['DRAFT', 'APPROVED']).default('APPROVED'),
+  preparationStepsText: z.string().optional().default(''),
   ingredients: z.array(lineSchema).min(1, 'Add at least one ingredient'),
 });
 
@@ -44,6 +47,7 @@ type FormValues = z.infer<typeof schema>;
 export function RecipesPage(): JSX.Element {
   const { data, isLoading } = useRecipes();
   const { data: ingredients = [] } = useIngredients();
+  const { data: foodItems = [] } = useFood();
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [opening, setOpening] = useState(false);
 
@@ -59,13 +63,23 @@ export function RecipesPage(): JSX.Element {
     if (opening && editing) {
       reset({
         name: editing.name,
+        foodItemId: editing.foodItemId ?? '',
         description: editing.description ?? '',
         yield: editing.yield ?? 1,
         status: (editing.status === 'DRAFT' ? 'DRAFT' : 'APPROVED'),
+        preparationStepsText: (editing.preparationSteps ?? []).join('\n'),
         ingredients: editing.ingredients.map((i) => ({ ingredientId: i.ingredientId, quantity: i.quantity })),
       });
     } else if (opening && !editing) {
-      reset({ name: '', description: '', yield: 1, status: 'APPROVED', ingredients: [] });
+      reset({
+        name: '',
+        foodItemId: '',
+        description: '',
+        yield: 1,
+        status: 'APPROVED',
+        preparationStepsText: '',
+        ingredients: [],
+      });
     }
   }, [opening, editing, reset]);
 
@@ -95,10 +109,15 @@ export function RecipesPage(): JSX.Element {
       };
     });
     // Backend RecipeCreateRequest only accepts {name, ingredients, preparationSteps, servingSize}.
+    const preparationSteps = (values.preparationStepsText ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
     const payload = {
       name: values.name,
+      foodItemId: values.foodItemId || null,
       ingredients: enrichedIngredients,
-      preparationSteps: [],
+      preparationSteps,
       servingSize: values.yield ?? 1,
     };
     try {
@@ -149,6 +168,7 @@ export function RecipesPage(): JSX.Element {
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
+              foodName={recipe.foodItemId ? foodItems.find((f) => f.id === recipe.foodItemId)?.name : null}
               onEdit={() => { setEditing(recipe); setOpening(true); }}
               onDelete={() => onDelete(recipe)}
             />
@@ -170,8 +190,30 @@ export function RecipesPage(): JSX.Element {
             {errors.name ? <p className="mt-1 text-xs text-red-600">{errors.name.message}</p> : null}
           </div>
           <div>
+            <Label htmlFor="foodItemId">Linked food item</Label>
+            <Select id="foodItemId" {...register('foodItemId')} className="mt-1">
+              <option value="">— Not linked —</option>
+              {foodItems.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-zinc-500">Required for the Allocations page to find this recipe when allocating the food item to a store.</p>
+          </div>
+          <div>
             <Label htmlFor="description">Description</Label>
             <Textarea id="description" {...register('description')} className="mt-1" />
+          </div>
+          <div>
+            <Label htmlFor="preparationStepsText">Preparation steps</Label>
+            <Textarea
+              id="preparationStepsText"
+              {...register('preparationStepsText')}
+              className="mt-1 min-h-[160px] font-mono text-sm"
+              placeholder={'e.g.\n1. Toast the bun until golden.\n2. Grill the patty 3 minutes per side.\n3. Assemble with lettuce, tomato, sauce.'}
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              One step per line. Saved as a list and shown in the mobile recipe viewer.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -239,7 +281,7 @@ export function RecipesPage(): JSX.Element {
   );
 }
 
-function RecipeCard({ recipe, onEdit, onDelete }: { recipe: Recipe; onEdit: () => void; onDelete: () => void }): JSX.Element {
+function RecipeCard({ recipe, foodName, onEdit, onDelete }: { recipe: Recipe; foodName?: string | null; onEdit: () => void; onDelete: () => void }): JSX.Element {
   const { data: cost } = useRecipeCost(recipe.id);
   return (
     <Card className="flex flex-col gap-3">
@@ -251,11 +293,29 @@ function RecipeCard({ recipe, onEdit, onDelete }: { recipe: Recipe; onEdit: () =
           <div>
             <p className="text-sm font-semibold text-zinc-950">{recipe.name}</p>
             <p className="text-xs text-zinc-500">{recipe.ingredients.length} ingredients</p>
+            <p className={`mt-0.5 text-xs ${foodName ? 'text-emerald-700' : 'text-amber-600'}`}>
+              {foodName ? `Linked → ${foodName}` : '⚠ Not linked to a food item'}
+            </p>
           </div>
         </div>
         <Badge>{recipe.status ?? 'APPROVED'}</Badge>
       </div>
       {recipe.description ? <p className="text-sm text-zinc-600">{recipe.description}</p> : null}
+      {recipe.preparationSteps && recipe.preparationSteps.length > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+            Preparation ({recipe.preparationSteps.length} steps)
+          </p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-xs text-zinc-700">
+            {recipe.preparationSteps.slice(0, 4).map((step, idx) => (
+              <li key={idx}>{step}</li>
+            ))}
+            {recipe.preparationSteps.length > 4 ? (
+              <li className="list-none text-zinc-400">+ {recipe.preparationSteps.length - 4} more…</li>
+            ) : null}
+          </ol>
+        </div>
+      ) : null}
       {cost ? (
         <p className="rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
           Cost: <span className="font-semibold text-zinc-950">${cost.totalCost.toFixed(2)}</span> ({cost.lines.length} lines)

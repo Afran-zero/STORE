@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from app.repositories.food_repository import FoodRepository
 from app.repositories.recipe_repository import RecipeRepository
 from app.repositories.ingredient_repository import IngredientRepository
+from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.sale_repository import SaleRepository
 from app.repositories.store_inventory_repository import StoreInventoryRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -29,6 +30,7 @@ class SaleService:
         self.food = FoodRepository(db)
         self.recipes = RecipeRepository(db)
         self.ingredients = IngredientRepository(db)
+        self.allocations = AllocationRepository(db)
         self.sales = SaleRepository(db)
         self.store_inventory = StoreInventoryRepository(db)
         self.notifications = NotificationRepository(db)
@@ -93,6 +95,15 @@ class SaleService:
                     await self.store_inventory.atomic_decrement(
                         business_id=business_id, store_id=store_id, ingredient_id=prev["ingredientId"], amount=-prev["required"]
                     )
+                    # Roll back any pool decrement we made for the previous ingredient
+                    try:
+                        await self.ingredients.increment_pool(
+                            business_id=business_id,
+                            ingredient_id=prev["ingredientId"],
+                            amount=prev["required"],
+                        )
+                    except Exception:
+                        pass
                 current_doc = result.get("current") or {}
                 current_qty = current_doc.get("quantity") if isinstance(current_doc, dict) else None
                 if current_qty is None:
@@ -100,12 +111,38 @@ class SaleService:
                 raise InsufficientStockError(
                     f"Insufficient stock for {entry['name']}: have {current_qty}, need {entry['required']}"
                 )
+            # Mirror decrement onto the master pool so ingredients.currentStock stays in sync
+            try:
+                await self.ingredients.decrement_pool(
+                    business_id=business_id,
+                    ingredient_id=entry["ingredientId"],
+                    amount=entry["required"],
+                )
+            except Exception:
+                # Pool sync is best-effort: if the pool was somehow empty, the
+                # store-side deduction already succeeded. Don't block the sale.
+                pass
             decremented.append(entry)
 
         unit_price = float(food.get("price") or 0)
         total_price = round(unit_price * float(quantity), 2)
         cost_per_unit = float(food.get("cost") or 0)
         total_cost = round(cost_per_unit * float(quantity), 2)
+
+        # FIFO-consume from the oldest ACTIVE allocation(s) at this store+food
+        # so per-allocation "sold" / "remaining" stays consistent across the day.
+        # If FIFO can't absorb the whole sale, the remainder is still sold (real
+        # ingredient stock permits it), but it just won't show up under a
+        # specific allocation. We don't fail the sale in that case.
+        try:
+            await self.allocations.consume_fifo(
+                business_id=business_id,
+                store_id=store_id,
+                food_id=food_item_id,
+                quantity=float(quantity),
+            )
+        except Exception:
+            pass
 
         payload = {
             "businessId": business_id,

@@ -13,6 +13,9 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
   status?: 'DRAFT' | 'APPROVED' | 'ARCHIVED' | string;
   yield?: number | null;
+  foodItemId?: string | null;
+  preparationSteps?: string[];
+  servingSize?: number | string | null;
 }
 
 export interface CreateRecipeRequest {
@@ -21,6 +24,9 @@ export interface CreateRecipeRequest {
   ingredients: RecipeIngredient[];
   status?: 'DRAFT' | 'APPROVED';
   yield?: number;
+  foodItemId?: string | null;
+  preparationSteps?: string[];
+  servingSize?: number | string;
 }
 
 export interface UpdateRecipeRequest {
@@ -29,6 +35,9 @@ export interface UpdateRecipeRequest {
   ingredients?: RecipeIngredient[];
   status?: 'DRAFT' | 'APPROVED' | 'ARCHIVED';
   yield?: number;
+  foodItemId?: string | null;
+  preparationSteps?: string[];
+  servingSize?: number | string;
 }
 
 export interface RecipeCostLine {

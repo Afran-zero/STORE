@@ -42,6 +42,7 @@ class RecipeService:
         await self._validate_ingredients(business_id=business_id, ingredients=payload.get("ingredients") or [])
         doc = {
             "name": name,
+            "foodItemId": payload.get("foodItemId") or None,
             "ingredients": payload.get("ingredients") or [],
             "preparationSteps": payload.get("preparationSteps") or [],
             "servingSize": payload.get("servingSize"),
@@ -57,6 +58,8 @@ class RecipeService:
             if dup and dup["id"] != recipe_id:
                 raise RecipeConflictError(new_name)
             update["name"] = new_name
+        if "foodItemId" in payload:
+            update["foodItemId"] = payload.get("foodItemId") or None
         if payload.get("ingredients") is not None:
             await self._validate_ingredients(business_id=business_id, ingredients=payload["ingredients"])
             update["ingredients"] = payload["ingredients"]

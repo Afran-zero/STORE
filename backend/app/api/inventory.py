@@ -13,12 +13,14 @@ from app.dependencies.rbac import require_role
 from app.schemas.ingredient import (
     AdjustmentRequest,
     AllocationRequest,
+    FoodAllocationRequest,
     IngredientCreateRequest,
     IngredientUpdateRequest,
     PurchaseRequest,
     ReturnRequest,
     TransferRequest,
 )
+from app.services.allocation_service import AllocationError, AllocationService
 from app.services.inventory_log_service import InventoryLogService
 from app.services.inventory_service import IngredientConflictError, IngredientNotFoundError, InventoryService
 
@@ -31,6 +33,10 @@ def _service(db: AsyncIOMotorDatabase = Depends(get_database_dependency)) -> Inv
 
 def _log_service(db: AsyncIOMotorDatabase = Depends(get_database_dependency)) -> InventoryLogService:
     return InventoryLogService(db)
+
+
+def _allocation_service(db: AsyncIOMotorDatabase = Depends(get_database_dependency)) -> AllocationService:
+    return AllocationService(db)
 
 
 @router.get("/ingredients")
@@ -236,3 +242,52 @@ async def history(
 ):
     rows = await service.history(business_id=current_user.businessId or "", ingredient_id=ingredient_id)
     return success_payload(rows)
+
+
+@router.post("/allocate-food", status_code=status.HTTP_201_CREATED)
+async def allocate_food(
+    body: FoodAllocationRequest,
+    current_user: CurrentUser = Depends(require_role(["MANAGER", "OWNER", "ADMIN"])),
+    service: AllocationService = Depends(_allocation_service),
+):
+    """Allocate N units of a food item to a store.
+
+    Resolves the food item's active recipe, computes the required ingredients
+    per unit × N, and atomically deducts from the store's inventory.
+    Rolls back the entire allocation if any ingredient is insufficient.
+    Now writes a persistent record to the ``allocations`` collection.
+    """
+    try:
+        result = await service.create_allocation(
+            business_id=current_user.businessId or "",
+            store_id=body.storeId,
+            food_id=body.foodItemId,
+            quantity=body.quantity,
+            created_by=current_user.userId,
+        )
+    except AllocationError as exc:
+        msg = str(exc)
+        if "not found" in msg.lower():
+            raise NotFoundError("FOOD_NOT_FOUND", msg)
+        raise ConflictError("INSUFFICIENT_STOCK", msg)
+    # Maintain the legacy response shape for the AllocateFoodCard widget:
+    return success_payload(
+        {
+            "storeId": result.get("storeId"),
+            "foodId": result.get("foodItemId"),
+            "foodName": result.get("foodName"),
+            "quantity": int(result.get("quantity") or 0),
+            "transactional": result.get("transactional", False),
+            "deductions": [
+                {
+                    "ingredientId": d["ingredientId"],
+                    "quantity": d["required"],
+                    "before": d["before"],
+                    "after": d["after"],
+                }
+                for d in result.get("deductions", [])
+            ],
+            "id": result.get("id"),
+        },
+        message=f"Allocated {body.quantity} × food item to store",
+    )

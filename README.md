@@ -121,7 +121,7 @@ python tests/workload_check.py
 ### 3) Web dashboard setup (Module 2)
 
 ```powershell
-cd ..\frontend
+cd .\frontend
 npm install
 npm run dev
 ```
@@ -139,7 +139,7 @@ npm run preview
 ### 4) Mobile app setup (Module 3)
 
 ```powershell
-cd ..\mobile
+cd .\mobile
 npm install
 npm run start
 ```

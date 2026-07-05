@@ -1,5 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import NetInfo from '@react-native-community/netinfo';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 import { syncQueue } from '@/db/syncEngine';
 
@@ -12,39 +11,24 @@ interface SyncStatusState {
 const SyncStatusContext = createContext<SyncStatusState | undefined>(undefined);
 
 export function SyncStatusProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [isOnline, setIsOnline] = useState(true);
+  // The worker app is configured to be always online; we expose the same context
+  // shape but skip NetInfo subscriptions on web so the UI is responsive.
+  const [isOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsOnline(Boolean(state.isConnected));
-      if (state.isConnected) {
-        void syncQueue();
-      }
-    });
-
-    const interval = setInterval(() => {
-      if (isOnline) {
-        void syncQueue();
-      }
-    }, 60_000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
-    };
-  }, [isOnline]);
-
-  const retrySync = async (): Promise<void> => {
+  const retrySync = useCallback(async (): Promise<void> => {
     setIsSyncing(true);
     try {
       await syncQueue();
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, []);
 
-  const value = useMemo<SyncStatusState>(() => ({ isOnline, isSyncing, retrySync }), [isOnline, isSyncing]);
+  const value = useMemo<SyncStatusState>(
+    () => ({ isOnline, isSyncing, retrySync }),
+    [isOnline, isSyncing, retrySync],
+  );
 
   return <SyncStatusContext.Provider value={value}>{children}</SyncStatusContext.Provider>;
 }

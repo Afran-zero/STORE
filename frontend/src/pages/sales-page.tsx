@@ -53,7 +53,7 @@ export function SalesPage(): JSX.Element {
   async function onSubmit(values: FormValues) {
     try {
       const sale = await recordMutation.mutateAsync(values);
-      toast.success(`Recorded ${sale.foodName} × ${sale.quantity} — $${sale.totalPrice.toFixed(2)}`);
+      toast.success(`Recorded ${sale.foodName} × ${sale.quantity} — $${Number(sale.totalPrice ?? 0).toFixed(2)}`);
       setOpening(false);
       reset({ storeId: values.storeId, foodItemId: '', quantity: 1, channel: values.channel });
     } catch (error) {
@@ -91,20 +91,24 @@ export function SalesPage(): JSX.Element {
             {sales.length === 0 ? (
               <TableEmpty colspan={6}>No sales yet. Record one to get started.</TableEmpty>
             ) : (
-              sales.map((sale) => (
+              sales.map((sale) => {
+                const profit = Number(sale.profit ?? 0);
+                const total = Number(sale.totalPrice ?? 0);
+                return (
                 <TableRow key={sale.id}>
                   <TableCell className="font-semibold text-zinc-950">{sale.foodName}</TableCell>
                   <TableCell>{sale.quantity}</TableCell>
                   <TableCell><Badge>{sale.channel}</Badge></TableCell>
-                  <TableCell>${sale.totalPrice.toFixed(2)}</TableCell>
-                  <TableCell className={sale.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                    ${sale.profit.toFixed(2)}
+                  <TableCell>${total.toFixed(2)}</TableCell>
+                  <TableCell className={profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                    ${profit.toFixed(2)}
                   </TableCell>
                   <TableCell className="text-zinc-500">
                     {formatDistanceToNow(new Date(sale.createdAt), { addSuffix: true })}
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

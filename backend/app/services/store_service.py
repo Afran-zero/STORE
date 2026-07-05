@@ -19,6 +19,10 @@ class StoreService:
         return store
 
     async def create_store(self, *, business_id: str, payload: dict) -> dict:
+        # Default the store type so legacy frontends that omit it still get a
+        # valid value. The repo already fills in `status`/`isActive`/`timestamps`.
+        if not payload.get("type"):
+            payload = {**payload, "type": "RETAIL"}
         return await self.repository.create(business_id=business_id, payload=payload)
 
     async def update_store(self, *, business_id: str, store_id: str, payload: dict) -> dict:

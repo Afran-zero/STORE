@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Bell, LayoutDashboard, Boxes, ClipboardList, Package, ReceiptText, Settings, Shield, UserCircle2 } from 'lucide-react';
+import { LayoutDashboard, Boxes, ClipboardList, Package, ReceiptText, Settings, Shield, UserCircle2, BarChart3, TrendingUp, Send, Sparkles } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 import { useAuth } from '@/context/auth-context';
@@ -20,7 +20,11 @@ const ownerNav = [
   { to: '/recipes', label: 'Recipes', icon: ClipboardList },
   { to: '/menu', label: 'Food Menu', icon: ReceiptText },
   { to: '/sales', label: 'Sales', icon: ReceiptText },
+  { to: '/forecast', label: 'Forecast', icon: TrendingUp },
+  { to: '/allocations', label: 'Allocations', icon: Send },
+  { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/tickets', label: 'Tickets', icon: Shield },
+  { to: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -81,16 +85,10 @@ export function AppShell({ children }: AppShellProps): JSX.Element {
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col gap-6">
-          <header className="flex items-center justify-between rounded-[32px] border border-zinc-200 bg-white px-6 py-5 shadow-soft">
+          <header className="flex items-center justify-between rounded-[32px] border border-zinc-300 bg-white px-6 py-5 shadow-soft">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">STORE Dashboard</p>
               <h2 className="mt-2 text-2xl font-black tracking-tight text-zinc-950">{user?.name ?? 'Workspace overview'}</h2>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" className="rounded-2xl border border-zinc-200 px-4 py-2">
-                <Bell className="mr-2 h-4 w-4" />
-                Notifications
-              </Button>
             </div>
           </header>
           <section className="min-w-0 flex-1">{children}</section>

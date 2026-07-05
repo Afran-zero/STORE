@@ -43,6 +43,25 @@ class RecipeRepository(BaseRepository):
         doc = await self.collection.find_one({"businessId": business_id, "name": name})
         return self._serialize(doc)
 
+    async def get_active_for_food(self, *, business_id, food_id):
+        """Find the active recipe for a food item.
+
+        Looks up recipes whose ``foodItemId`` matches and status is ACTIVE
+        (or, for older data, ``status`` is unset but ``isActive`` is True).
+        Returns the serialized doc or None.
+        """
+        query = {
+            "businessId": business_id,
+            "foodItemId": food_id,
+            "$or": [
+                {"status": "ACTIVE"},
+                {"status": "APPROVED"},
+                {"status": {"$exists": False}, "isActive": True},
+            ],
+        }
+        doc = await self.collection.find_one(query)
+        return self._serialize(doc)
+
     async def create(self, *, business_id, payload):
         now = datetime.now(timezone.utc)
         doc = {"businessId": business_id, "status": "APPROVED", "versions": [], "images": [], "isAiGenerated": False, "createdAt": now, "updatedAt": now}

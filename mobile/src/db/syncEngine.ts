@@ -1,10 +1,12 @@
-import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 
 import { apiClient } from '@/api/client';
 import { enqueueItem, listQueueItems } from '@/db/offlineQueue';
 import type { QueueItem } from '@/types/models';
 
 let isSyncing = false;
+
+const isWeb = Platform.OS === 'web';
 
 async function processItem(item: QueueItem): Promise<void> {
   const payload = JSON.parse(item.payload) as Record<string, unknown>;
@@ -25,12 +27,12 @@ async function processItem(item: QueueItem): Promise<void> {
 }
 
 export async function syncQueue(): Promise<void> {
-  if (isSyncing) {
+  if (isWeb) {
+    // System is always online; nothing to sync from a persistent queue on web.
     return;
   }
 
-  const connection = await NetInfo.fetch();
-  if (!connection.isConnected) {
+  if (isSyncing) {
     return;
   }
 
@@ -55,6 +57,14 @@ export async function syncQueue(): Promise<void> {
 }
 
 export async function queueSale(payload: Record<string, unknown>): Promise<void> {
+  if (isWeb) {
+    // Fire-and-forget on web: rely on the always-online backend instead of a queue.
+    await apiClient.post('/api/v1/sales', payload).catch(() => {
+      // Swallow errors here; the calling screen handles UX feedback via react-query.
+    });
+    return;
+  }
+
   await enqueueItem({
     type: 'SALE',
     payload: JSON.stringify(payload),

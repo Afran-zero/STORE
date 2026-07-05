@@ -2,10 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@/lib/query-helpers';
 import { storeKeys } from '@/api/queryKeys';
 import { apiClient } from '@/api/client';
 
+export type StoreType = 'RETAIL' | 'FOOD' | 'WAREHOUSE' | 'KITCHEN';
+
 export interface Store {
   id: string;
   businessId?: string;
   name: string;
+  type?: StoreType;
   code?: string;
   address?: string;
   city?: string;
@@ -19,6 +22,7 @@ export interface Store {
 
 export interface CreateStoreRequest {
   name: string;
+  type?: StoreType;
   code?: string;
   address?: string;
   city?: string;
@@ -30,6 +34,7 @@ export interface CreateStoreRequest {
 
 export interface UpdateStoreRequest {
   name?: string;
+  type?: StoreType;
   code?: string;
   address?: string;
   city?: string;
@@ -139,3 +144,6 @@ export function useDeleteStore() {
     },
   });
 }
+
+// Re-export the store summary hook so feature pages can import it next to useStores.
+export { useStoreSummary } from '@/features/analytics/hooks/use-analytics';

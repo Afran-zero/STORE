@@ -11,6 +11,7 @@ class IngredientCreateRequest(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     category: str | None = None
     unit: Annotated[str, Field(min_length=1)]
+    currentStock: float | None = None
     minimumStock: float = 0
     maximumStock: float | None = None
     supplierId: str | None = None
@@ -68,6 +69,22 @@ class ReturnRequest(BaseModel):
     storeId: str
     quantity: float
     date: str
+
+
+class FoodAllocationRequest(BaseModel):
+    """Allocate N units of a food item to a store; ingredients are auto-deducted
+    from store inventory according to the recipe."""
+
+    storeId: Annotated[str, Field(min_length=1)]
+    foodItemId: Annotated[str, Field(min_length=1)]
+    quantity: Annotated[float, Field(gt=0)]
+
+
+class FoodAllocationDeduction(BaseModel):
+    ingredientId: str
+    quantity: float
+    before: float
+    after: float
 
 
 class SupplierCreateRequest(BaseModel):

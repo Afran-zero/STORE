@@ -32,7 +32,7 @@ export function Dialog({ open, onOpenChange, title, description, children, class
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl',
+          'relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-300 bg-white p-6 shadow-2xl',
           className,
         )}
         onClick={(e) => e.stopPropagation()}

@@ -3,13 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, status
-from jose import JWTError
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import get_settings
 from app.core.exceptions import AppException, UnauthorizedError
 from app.core.response import success_payload
-from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, verify_password
+from app.core.security import (
+    TokenError,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    verify_password,
+)
 from app.database.client import get_database_dependency
 from app.dependencies.auth import CurrentUser, get_current_user
 from app.repositories.user_repository import UserRepository
@@ -77,10 +82,10 @@ async def login(payload: LoginRequest, repo: UserRepository = Depends(_repo)):
 async def refresh_token(payload: RefreshTokenRequest):
     try:
         refresh_payload = decode_refresh_token(payload.refreshToken)
-        if refresh_payload.get("type") != "refresh":
-            raise UnauthorizedError(code="UNAUTHORIZED", message="Invalid refresh token")
-    except JWTError as exc:
+    except TokenError as exc:
         raise UnauthorizedError(code="UNAUTHORIZED", message="Invalid refresh token") from exc
+    if refresh_payload.get("type") != "refresh":
+        raise UnauthorizedError(code="UNAUTHORIZED", message="Invalid refresh token")
     sub = refresh_payload.get("sub")
     if not sub:
         raise UnauthorizedError(code="UNAUTHORIZED", message="Invalid refresh token")

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { SubmitErrorHandler } from 'react-hook-form';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, PackagePlus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -14,12 +14,15 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, Sheet as _Sheet } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogFooter } from '@/components/ui/dialog';
 import {
+  useAdjustStock,
   useCreateIngredient,
   useDeleteIngredient,
   useIngredients,
   useUpdateIngredientMutation,
 } from '@/features/inventory/hooks/use-ingredients';
+import { AllocateFoodCard } from '@/components/shared/allocate-food-card';
 import type { Ingredient } from '@/api/endpoints/ingredients';
 import { ApiException } from '@/types/api';
 
@@ -35,14 +38,134 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+const restockSchema = z.object({
+  direction: z.enum(['add', 'remove']),
+  quantity: z.coerce.number().positive('Must be greater than 0'),
+  reason: z.string().min(2, 'Add a short reason (e.g. "Restock from supplier", "Spillage")'),
+});
+
+type RestockValues = z.infer<typeof restockSchema>;
+
+function RestockDialog({
+  ingredient,
+  open,
+  onOpenChange,
+  onSubmit,
+  isPending,
+}: {
+  ingredient: Ingredient | null;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  onSubmit: (values: RestockValues) => Promise<void> | void;
+  isPending: boolean;
+}): JSX.Element {
+  const form = useForm<RestockValues>({
+    resolver: zodResolver(restockSchema),
+    defaultValues: { direction: 'add', quantity: 0, reason: 'Restock from supplier' },
+  });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({ direction: 'add', quantity: 0, reason: 'Restock from supplier' });
+    }
+  }, [open, form]);
+
+  const direction = form.watch('direction');
+  const currentStock = Number(ingredient?.currentStock ?? 0);
+  const qty = Number(form.watch('quantity') || 0);
+  const projected = direction === 'add' ? currentStock + qty : currentStock - qty;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={ingredient ? `Restock — ${ingredient.name}` : 'Restock'}
+      description="Adjust the on-hand stock for this ingredient. Use Add to receive new inventory; use Remove for shrinkage, spillage, or manual write-offs."
+    >
+      <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+        <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-500">Current pool</span>
+            <span className="font-semibold text-zinc-950">{currentStock} {ingredient?.unit ?? ''}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-zinc-500">After adjustment</span>
+            <span className={`font-semibold ${projected < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+              {projected.toFixed(2)} {ingredient?.unit ?? ''}
+            </span>
+          </div>
+        </div>
+        <div>
+          <Label>Direction</Label>
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => form.setValue('direction', 'add', { shouldValidate: true })}
+              className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+                direction === 'add'
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
+            >
+              <ArrowUpRight className="h-4 w-4" /> Add stock
+            </button>
+            <button
+              type="button"
+              onClick={() => form.setValue('direction', 'remove', { shouldValidate: true })}
+              className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+                direction === 'remove'
+                  ? 'border-red-300 bg-red-50 text-red-600'
+                  : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
+            >
+              <ArrowDownRight className="h-4 w-4" /> Remove stock
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="restock-quantity">Quantity ({ingredient?.unit ?? ''})</Label>
+            <Input
+              id="restock-quantity"
+              type="number"
+              step="0.01"
+              min={0.01}
+              {...form.register('quantity', { valueAsNumber: true })}
+              className="mt-1"
+            />
+            {form.formState.errors.quantity ? (
+              <p className="mt-1 text-xs text-red-600">{form.formState.errors.quantity.message}</p>
+            ) : null}
+          </div>
+          <div>
+            <Label htmlFor="restock-reason">Reason</Label>
+            <Input id="restock-reason" {...form.register('reason')} className="mt-1" />
+            {form.formState.errors.reason ? (
+              <p className="mt-1 text-xs text-red-600">{form.formState.errors.reason.message}</p>
+            ) : null}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" disabled={isPending || projected < 0}>
+            {direction === 'add' ? 'Add stock' : 'Remove stock'}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
+  );
+}
+
 export function InventoryPage(): JSX.Element {
   const [filter, setFilter] = useState<'all' | 'low'>('all');
   const { data, isLoading } = useIngredients(filter === 'low' ? { lowStock: true } : {});
   const [editing, setEditing] = useState<Ingredient | null>(null);
   const [creating, setCreating] = useState(false);
+  const [restockTarget, setRestockTarget] = useState<Ingredient | null>(null);
   const createMutation = useCreateIngredient();
   const updateMutation = useUpdateIngredientMutation();
   const deleteMutation = useDeleteIngredient();
+  const adjustMutation = useAdjustStock();
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema) });
   const { register, handleSubmit, reset, formState: { errors } } = form;
@@ -107,8 +230,29 @@ export function InventoryPage(): JSX.Element {
     }
   }
 
+  async function onRestock(values: RestockValues) {
+    if (!restockTarget) return;
+    const signed = values.direction === 'add' ? values.quantity : -values.quantity;
+    try {
+      await adjustMutation.mutateAsync({
+        ingredientId: restockTarget.id,
+        quantity: signed,
+        reason: values.reason,
+      });
+      toast.success(
+        values.direction === 'add'
+          ? `Added ${values.quantity} ${restockTarget.unit} to ${restockTarget.name}`
+          : `Removed ${values.quantity} ${restockTarget.unit} from ${restockTarget.name}`,
+      );
+      setRestockTarget(null);
+    } catch (error) {
+      toast.error(error instanceof ApiException ? error.message : 'Stock adjustment failed');
+    }
+  }
+
   return (
     <div className="space-y-4">
+      <AllocateFoodCard />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Select value={filter} onChange={(e) => setFilter(e.target.value as 'all' | 'low')}>
@@ -135,7 +279,7 @@ export function InventoryPage(): JSX.Element {
               <TableHead>Category</TableHead>
               <TableHead>Unit</TableHead>
               <TableHead>Cost / unit</TableHead>
-              <TableHead>Stock</TableHead>
+              <TableHead>Stock (pool)</TableHead>
               <TableHead>Min</TableHead>
               <TableHead />
             </TableRow>
@@ -163,10 +307,13 @@ export function InventoryPage(): JSX.Element {
                     <TableCell>{ing.minimumStock ?? 0}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" onClick={() => openEdit(ing)} aria-label="Edit">
+                        <Button variant="ghost" onClick={() => setRestockTarget(ing)} aria-label={`Restock ${ing.name}`} title="Restock / adjust stock">
+                          <PackagePlus className="h-4 w-4 text-emerald-600" />
+                        </Button>
+                        <Button variant="ghost" onClick={() => openEdit(ing)} aria-label="Edit" title="Edit">
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" onClick={() => onDelete(ing)} aria-label="Delete">
+                        <Button variant="ghost" onClick={() => onDelete(ing)} aria-label="Delete" title="Delete">
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </div>
@@ -217,7 +364,7 @@ export function InventoryPage(): JSX.Element {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="currentStock">Stock</Label>
+              <Label htmlFor="currentStock">Stock (pool)</Label>
               <Input id="currentStock" type="number" step="0.01" {...register('currentStock')} className="mt-1" />
             </div>
             <div>
@@ -237,6 +384,14 @@ export function InventoryPage(): JSX.Element {
           </div>
         </form>
       </Sheet>
+
+      <RestockDialog
+        ingredient={restockTarget}
+        open={restockTarget !== null}
+        onOpenChange={(next) => { if (!next) setRestockTarget(null); }}
+        onSubmit={onRestock}
+        isPending={adjustMutation.isPending}
+      />
     </div>
   );
 }

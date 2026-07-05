@@ -28,7 +28,16 @@ class Settings(BaseSettings):
     ai_temperature: float = Field(default=0.1, alias="AI_TEMPERATURE")
     ai_max_history_messages: int = Field(default=20, alias="AI_MAX_HISTORY_MESSAGES")
     ai_max_tool_rounds: int = Field(default=4, alias="AI_MAX_TOOL_ROUNDS")
-    cors_origins: str = Field(default="http://localhost:3000,http://localhost:19006", alias="APP_CORS_ORIGINS")
+    # Default origins cover Expo Web (8081), Expo Go dev tools (19000-19002, 19006),
+    # and a typical local web frontend (3000). Override via APP_CORS_ORIGINS env var.
+    cors_origins: str = Field(
+        default=(
+            "http://localhost:3000,http://localhost:8081,http://127.0.0.1:8081,"
+            "http://localhost:19000,http://localhost:19001,http://localhost:19002,"
+            "http://localhost:19006"
+        ),
+        alias="APP_CORS_ORIGINS",
+    )
 
     def parsed_cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

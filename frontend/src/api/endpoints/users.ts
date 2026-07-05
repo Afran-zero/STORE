@@ -30,6 +30,16 @@ export interface UpdateUserRequest {
   isActive?: boolean;
 }
 
+export interface UpdateUserPayload {
+  id: string;
+  input: {
+    email?: string;
+    name?: string;
+    role?: UserRole;
+    assignedStore?: string | null;
+  };
+}
+
 export async function listUsers(): Promise<UserRecord[]> {
   return apiClient.get('/api/v1/users');
 }

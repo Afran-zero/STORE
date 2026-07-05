@@ -11,9 +11,21 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.config import get_settings
+
+
+class TokenError(Exception):
+    """Raised when a JWT cannot be decoded or has expired.
+
+    The auth dependency translates this into an HTTP 401 so the frontend
+    interceptor can refresh the token and retry.
+    """
+
+    def __init__(self, message: str = "Invalid token", *, expired: bool = False) -> None:
+        super().__init__(message)
+        self.expired = expired
 
 
 # bcrypt has a hard 72-byte limit on the password input; truncate silently.
@@ -52,12 +64,22 @@ def create_refresh_token(payload: dict[str, Any]) -> str:
 
 def decode_access_token(token: str) -> dict[str, Any]:
     settings = get_settings()
-    return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    try:
+        return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except ExpiredSignatureError as exc:
+        raise TokenError("Access token has expired", expired=True) from exc
+    except JWTError as exc:
+        raise TokenError("Invalid access token") from exc
 
 
 def decode_refresh_token(token: str) -> dict[str, Any]:
     settings = get_settings()
-    return jwt.decode(token, settings.jwt_refresh_secret, algorithms=["HS256"])
+    try:
+        return jwt.decode(token, settings.jwt_refresh_secret, algorithms=["HS256"])
+    except ExpiredSignatureError as exc:
+        raise TokenError("Refresh token has expired", expired=True) from exc
+    except JWTError as exc:
+        raise TokenError("Invalid refresh token") from exc
 
 
 def is_token_valid(token: str, *, refresh: bool = False) -> bool:
@@ -67,7 +89,7 @@ def is_token_valid(token: str, *, refresh: bool = False) -> bool:
         else:
             decode_access_token(token)
         return True
-    except JWTError:
+    except TokenError:
         return False
 
 

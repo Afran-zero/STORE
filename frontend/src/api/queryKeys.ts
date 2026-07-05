@@ -54,8 +54,37 @@ export const saleKeys = {
 
 export const forecastKeys = {
   daily: (days: number) => ['forecasts', 'daily', days] as const,
+  projected: (days: number, top: number, storeId?: string) =>
+    ['forecasts', 'projected-daily', days, top, storeId ?? null] as const,
+};
+
+export const analyticsKeys = {
+  dashboard: (storeId?: string) => ['analytics', 'dashboard', storeId ?? null] as const,
+  revenue: (range: Record<string, string | undefined>, groupBy: string) =>
+    ['analytics', 'revenue', range, groupBy] as const,
+  profit: (range: Record<string, string | undefined>) => ['analytics', 'profit', range] as const,
+  inventory: (range: Record<string, string | undefined>) => ['analytics', 'inventory', range] as const,
+  employees: (range: Record<string, string | undefined>) => ['analytics', 'employees', range] as const,
+  stores: (range: Record<string, string | undefined>) => ['analytics', 'stores', range] as const,
+  food: (range: Record<string, string | undefined>) => ['analytics', 'food', range] as const,
+  storeSummary: (storeId: string) => ['analytics', 'store-summary', storeId] as const,
+};
+
+export const allocationKeys = {
+  all: ['allocations'] as const,
+  list: (params: Record<string, string | number | undefined>) => ['allocations', 'list', params] as const,
+  detail: (id: string) => ['allocations', 'detail', id] as const,
+  storeSummary: (storeId: string, start?: string, end?: string) =>
+    ['allocations', 'store-summary', storeId, start ?? null, end ?? null] as const,
 };
 
 export const notificationKeys = {
   list: (storeId?: string) => ['notifications', 'list', storeId ?? null] as const,
+};
+
+export const attendanceKeys = {
+  today: ['attendance', 'today'] as const,
+  employee: (userId: string, start: string, end: string) =>
+    ['attendance', 'employee', userId, start, end] as const,
+  overview: (start: string, end: string) => ['attendance', 'overview', start, end] as const,
 };

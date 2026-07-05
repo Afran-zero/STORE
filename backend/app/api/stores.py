@@ -43,10 +43,16 @@ async def update_store(store_id: str, payload: StoreUpdateRequest, current_user:
 
 @router.patch("/{store_id}/status")
 async def change_status(store_id: str, payload: StoreStatusUpdateRequest, current_user: CurrentUser = Depends(get_current_user)):
+    # Normalize either `status` (Literal) or `isActive` (bool) into a single
+    # `status` string. `isActive=True` maps to "OPEN", `isActive=False` to "CLOSED".
+    if payload.status is not None:
+        new_status = payload.status
+    else:
+        new_status = "OPEN" if payload.isActive else "CLOSED"
     row = await service.update_store(
         business_id=current_user.businessId or "",
         store_id=store_id,
-        payload={"status": payload.status},
+        payload={"status": new_status},
     )
     return success_payload(row, message="Store status updated")
 

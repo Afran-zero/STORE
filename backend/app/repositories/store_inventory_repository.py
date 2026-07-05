@@ -63,15 +63,57 @@ class StoreInventoryRepository(BaseRepository):
         )
         return await self.get_one(business_id=business_id, store_id=store_id, ingredient_id=ingredient_id)
 
-    async def atomic_decrement(self, *, business_id, store_id, ingredient_id, amount):
+    async def atomic_decrement(self, *, business_id, store_id, ingredient_id, amount, session=None):
+        """Atomically decrement ``quantity`` by ``amount`` only if there is enough stock.
+
+        Returns:
+          ``{"ok": True, "current": {...}}`` on success,
+          ``{"ok": False, "reason": "insufficient_stock" | "no_stock_record", "current": ...}`` on failure.
+
+        Pass ``session=...`` to participate in a Mongo transaction.
+        """
+        kwargs = {"return_document": True}
+        if session is not None:
+            kwargs["session"] = session
         result = await self.collection.find_one_and_update(
             {"businessId": business_id, "storeId": store_id, "ingredientId": ingredient_id, "quantity": {"$gte": amount}},
             {"$inc": {"quantity": -amount}, "$set": {"updatedAt": datetime.now(timezone.utc)}},
-            return_document=True,
+            **kwargs,
         )
         if result is None:
-            current = await self.collection.find_one({"businessId": business_id, "storeId": store_id, "ingredientId": ingredient_id})
+            find_kwargs: Dict[str, Any] = {}
+            if session is not None:
+                find_kwargs["session"] = session
+            current = await self.collection.find_one(
+                {"businessId": business_id, "storeId": store_id, "ingredientId": ingredient_id}, **find_kwargs
+            )
             if current is None:
                 return {"ok": False, "reason": "no_stock_record", "current": None}
             return {"ok": False, "reason": "insufficient_stock", "current": self._serialize(current)}
         return {"ok": True, "current": self._serialize(result)}
+
+    async def atomic_increment(self, *, business_id, store_id, ingredient_id, amount, session=None):
+        """Atomically increment ``quantity`` by ``amount``. Used when reversing an allocation.
+
+        Creates the stock record if it doesn't exist. Returns the updated doc.
+        """
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc)
+        kwargs: Dict[str, Any] = {"return_document": True, "upsert": True}
+        if session is not None:
+            kwargs["session"] = session
+        result = await self.collection.find_one_and_update(
+            {"businessId": business_id, "storeId": store_id, "ingredientId": ingredient_id},
+            {
+                "$inc": {"quantity": amount},
+                "$set": {"updatedAt": now},
+                "$setOnInsert": {
+                    "businessId": business_id,
+                    "storeId": store_id,
+                    "ingredientId": ingredient_id,
+                    "createdAt": now,
+                },
+            },
+            **kwargs,
+        )
+        return self._serialize(result)

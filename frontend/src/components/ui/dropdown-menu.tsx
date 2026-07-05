@@ -41,7 +41,7 @@ export function DropdownMenu({ trigger, children, align = 'end', className }: Dr
         <div
           role="menu"
           className={cn(
-            'absolute z-30 mt-2 min-w-[10rem] rounded-2xl border border-zinc-200 bg-white p-1 shadow-soft',
+            'absolute z-30 mt-2 min-w-[10rem] rounded-2xl border border-zinc-300 bg-white p-1 shadow-soft',
             align === 'end' ? 'right-0' : 'left-0',
             className,
           )}
@@ -84,5 +84,5 @@ export function DropdownItem({
 }
 
 export function DropdownSeparator() {
-  return <div className="my-1 h-px bg-zinc-100" />;
+  return <div className="my-1 h-px bg-zinc-200" />;
 }

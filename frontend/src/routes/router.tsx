@@ -14,6 +14,8 @@ import { AttendancePage } from '@/pages/attendance-page';
 import { SalesPage } from '@/pages/sales-page';
 import { ReportsPage } from '@/pages/reports-page';
 import { AnalyticsPage } from '@/pages/analytics-page';
+import { AllocationsPage } from '@/pages/allocations-page';
+import { ForecastPage } from '@/pages/forecast-page';
 import { TicketsPage } from '@/pages/tickets-page';
 import { NotificationsPage } from '@/pages/notifications-page';
 import { SettingsPage } from '@/pages/settings-page';
@@ -82,7 +84,20 @@ export const router = createBrowserRouter([
   { path: '/attendance', element: <ProtectedRoute><Shell><AttendancePage /></Shell></ProtectedRoute> },
   { path: '/sales', element: <ProtectedRoute><Shell><SalesPage /></Shell></ProtectedRoute> },
   { path: '/reports', element: <ProtectedRoute><Shell><ReportsPage /></Shell></ProtectedRoute> },
+  {
+    path: '/allocations',
+    element: (
+      <ProtectedRoute>
+        <Shell>
+          <RoleGuard roles={['OWNER', 'MANAGER']}>
+            <AllocationsPage />
+          </RoleGuard>
+        </Shell>
+      </ProtectedRoute>
+    ),
+  },
   { path: '/analytics', element: <ProtectedRoute><Shell><AnalyticsPage /></Shell></ProtectedRoute> },
+  { path: '/forecast', element: <ProtectedRoute><Shell><ForecastPage /></Shell></ProtectedRoute> },
   { path: '/tickets', element: <ProtectedRoute><Shell><TicketsPage /></Shell></ProtectedRoute> },
   { path: '/notifications', element: <ProtectedRoute><Shell><NotificationsPage /></Shell></ProtectedRoute> },
   { path: '/settings', element: <ProtectedRoute><Shell><SettingsPage /></Shell></ProtectedRoute> },

@@ -30,6 +30,11 @@ class ConflictError(AppException):
         super().__init__(code, message, status_code=409, details=details)
 
 
+class ValidationError(AppException):
+    def __init__(self, code: str = "VALIDATION_ERROR", message: str = "Invalid request", *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(code, message, status_code=422, details=details)
+
+
 class UnauthorizedError(AppException):
     def __init__(self, code: str = "UNAUTHORIZED", message: str = "Authentication required", *, details: dict[str, Any] | None = None) -> None:
         super().__init__(code, message, status_code=401, details=details)
