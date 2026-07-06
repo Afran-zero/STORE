@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     mongo_db_name: str = Field(default="store_erp", alias="MONGO_DB_NAME")
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
     jwt_refresh_secret: str = Field(default="change-me-too", alias="JWT_REFRESH_SECRET")
-    access_token_expiry_minutes: int = 15
-    refresh_token_expiry_days: int = 30
+    access_token_expiry_minutes: int = 480
+    refresh_token_expiry_days: int = 90
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     admin_password: str = Field(default="admin123", alias="ADMIN_PASSWORD")
     hardcoded_admin_name: str = Field(default="Store Admin", alias="HARDCODED_ADMIN_NAME")
@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     ai_temperature: float = Field(default=0.1, alias="AI_TEMPERATURE")
     ai_max_history_messages: int = Field(default=20, alias="AI_MAX_HISTORY_MESSAGES")
     ai_max_tool_rounds: int = Field(default=4, alias="AI_MAX_TOOL_ROUNDS")
+    # Redis-backed cache TTLs (seconds) for AI tool calls and MCP reads.
+    ai_cache_tool_ttl_seconds: int = Field(default=60, alias="AI_CACHE_TOOL_TTL_SECONDS")
+    ai_cache_mcp_ttl_seconds: int = Field(default=30, alias="AI_CACHE_MCP_TTL_SECONDS")
+    # Per-user rate limit for AI chat (requests per minute, with small burst).
+    ai_rate_limit_per_minute: int = Field(default=20, alias="AI_RATE_LIMIT_PER_MINUTE")
+    ai_rate_limit_burst: int = Field(default=5, alias="AI_RATE_LIMIT_BURST")
+    # Streaming toggle for the chat endpoint.
+    ai_streaming_enabled: bool = Field(default=False, alias="AI_STREAMING_ENABLED")
     # Default origins cover Expo Web (8081), Expo Go dev tools (19000-19002, 19006),
     # and a typical local web frontend (3000). Override via APP_CORS_ORIGINS env var.
     cors_origins: str = Field(

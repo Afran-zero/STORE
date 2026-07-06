@@ -53,8 +53,14 @@ export function useCreateAllocation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: AllocationCreateRequest) => createAllocation(input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: allocationKeys.all });
+    onSuccess: (allocation: Allocation) => {
+      // Force-refetch the list (and store-summary) so the new row appears immediately.
+      // Use refetchQueries rather than invalidateQueries because some pages hold
+      // filtered query keys that can miss the invalidate-and-then-render cycle.
+      qc.refetchQueries({ queryKey: allocationKeys.all });
+      qc.setQueryData(allocationKeys.detail(allocation.id), allocation);
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+      qc.invalidateQueries({ queryKey: ['inventory'] });
     },
   });
 }
@@ -64,8 +70,9 @@ export function useUpdateAllocation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: AllocationUpdateRequest }) => updateAllocation(id, input),
     onSuccess: (allocation: Allocation) => {
-      qc.invalidateQueries({ queryKey: allocationKeys.all });
+      qc.refetchQueries({ queryKey: allocationKeys.all });
       qc.setQueryData(allocationKeys.detail(allocation.id), allocation);
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 }
@@ -75,8 +82,9 @@ export function useDeleteAllocation() {
   return useMutation({
     mutationFn: (id: string) => deleteAllocation(id),
     onSuccess: (allocation: Allocation) => {
-      qc.invalidateQueries({ queryKey: allocationKeys.all });
+      qc.refetchQueries({ queryKey: allocationKeys.all });
       qc.setQueryData(allocationKeys.detail(allocation.id), allocation);
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 }

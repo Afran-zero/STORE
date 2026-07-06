@@ -89,6 +89,11 @@ class UserService:
             raise UserNotFoundError(user_id)
         return item
 
+    async def delete_user(self, *, business_id: str, user_id: str) -> bool:
+        """Hard-delete a user. Raises UserNotFoundError if missing."""
+        await self.get_user(business_id=business_id, user_id=user_id)
+        return await self.repo.delete(business_id=business_id, user_id=user_id)
+
     async def assign_store(self, *, business_id: str, user_id: str, store_id: Optional[str]) -> Dict[str, Any]:
         await self.get_user(business_id=business_id, user_id=user_id)
         item = await self.repo.update(business_id=business_id, user_id=user_id, payload={"assignedStore": store_id})

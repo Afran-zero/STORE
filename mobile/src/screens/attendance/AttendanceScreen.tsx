@@ -15,6 +15,7 @@ import {
 } from '@/api/endpoints/attendance';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { scaleValue, useSizeClass } from '@/lib/responsive';
 
 function fmtClock(iso?: string | null): string {
   if (!iso) return '—';
@@ -29,6 +30,8 @@ function fmtClock(iso?: string | null): string {
 export function AttendanceScreen(): JSX.Element {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const { width, isCompact } = useSizeClass();
+  const s = (n: number) => scaleValue(n, width);
 
   const todayQuery = useQuery({
     queryKey: ['attendance', 'today', user?.userId ?? ''],
@@ -36,9 +39,10 @@ export function AttendanceScreen(): JSX.Element {
     refetchInterval: 60_000,
   });
 
-  const record: AttendanceRecord | null = todayQuery.data && (todayQuery.data as AttendanceRecord).status
-    ? (todayQuery.data as AttendanceRecord)
-    : null;
+  const record: AttendanceRecord | null =
+    todayQuery.data && (todayQuery.data as AttendanceRecord).status
+      ? (todayQuery.data as AttendanceRecord)
+      : null;
 
   const clockInMut = useMutation({
     mutationFn: () => clockIn({ storeId: user?.assignedStore ?? null }),
@@ -62,6 +66,10 @@ export function AttendanceScreen(): JSX.Element {
         ? clockOutMut.error.message
         : null;
 
+  // Stack clock-in / clock-out tiles on the smallest phones so neither value
+  // gets clipped; render side-by-side once we have the room.
+  const timeDirection: 'row' | 'column' = isCompact ? 'column' : 'row';
+
   return (
     <AppScreen
       title="Attendance"
@@ -70,8 +78,10 @@ export function AttendanceScreen(): JSX.Element {
       refreshing={todayQuery.isFetching}
     >
       <Card>
-        <View style={styles.row}>
-          <Text style={styles.label}>Status</Text>
+        <View style={[styles.row, { gap: 8 }]}>
+          <Text style={[styles.label, { fontSize: s(13) }]} numberOfLines={1}>
+            Status
+          </Text>
           <StatusChip
             label={
               !record
@@ -87,18 +97,49 @@ export function AttendanceScreen(): JSX.Element {
             }
           />
         </View>
-        <View style={styles.timeGrid}>
-          <View style={styles.timeCell}>
-            <Text style={styles.timeLabel}>Clock in</Text>
-            <Text style={styles.timeValue}>{fmtClock(record?.clockIn)}</Text>
+        <View
+          style={[
+            styles.timeGrid,
+            { flexDirection: timeDirection, gap: s(10), marginTop: s(10) },
+          ]}
+        >
+          <View
+            style={[
+              styles.timeCell,
+              {
+                padding: s(14),
+                borderRadius: s(16),
+                flex: timeDirection === 'row' ? 1 : undefined,
+              },
+            ]}
+          >
+            <Text style={[styles.timeLabel, { fontSize: s(11) }]} numberOfLines={1}>
+              Clock in
+            </Text>
+            <Text style={[styles.timeValue, { fontSize: s(22) }]} numberOfLines={1}>
+              {fmtClock(record?.clockIn)}
+            </Text>
           </View>
-          <View style={styles.timeCell}>
-            <Text style={styles.timeLabel}>Clock out</Text>
-            <Text style={styles.timeValue}>{fmtClock(record?.clockOut)}</Text>
+          <View
+            style={[
+              styles.timeCell,
+              {
+                padding: s(14),
+                borderRadius: s(16),
+                flex: timeDirection === 'row' ? 1 : undefined,
+              },
+            ]}
+          >
+            <Text style={[styles.timeLabel, { fontSize: s(11) }]} numberOfLines={1}>
+              Clock out
+            </Text>
+            <Text style={[styles.timeValue, { fontSize: s(22) }]} numberOfLines={1}>
+              {fmtClock(record?.clockOut)}
+            </Text>
           </View>
         </View>
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <View style={styles.actions}>
+        {errorMessage ? <Text style={[styles.error, { fontSize: s(13) }]}>{errorMessage}</Text> : null}
+        <View style={[styles.actions, { gap: s(10), marginTop: s(6) }]}>
           <PrimaryButton
             label={clockedIn ? 'Already clocked in' : 'Clock in'}
             onPress={() => clockInMut.mutate()}
@@ -112,7 +153,7 @@ export function AttendanceScreen(): JSX.Element {
           />
         </View>
       </Card>
-      <Text style={styles.help}>
+      <Text style={[styles.help, { fontSize: s(12) }]} numberOfLines={3}>
         Your manager uses these times to track attendance. Pull down to refresh.
       </Text>
     </AppScreen>
@@ -120,20 +161,17 @@ export function AttendanceScreen(): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: 13, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
-  timeGrid: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' },
+  label: { fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
+  timeGrid: { flexDirection: 'row', gap: 12 },
   timeCell: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 16,
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  timeLabel: { fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' },
-  timeValue: { fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 4 },
+  timeLabel: { fontWeight: '700', color: colors.muted, textTransform: 'uppercase' },
+  timeValue: { fontWeight: '900', color: colors.text, marginTop: 4 },
   actions: { gap: 10, marginTop: 4 },
-  error: { color: colors.danger, fontSize: 13, fontWeight: '700' },
-  help: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  error: { color: colors.danger, fontWeight: '700' },
+  help: { color: colors.muted, textAlign: 'center' },
 });

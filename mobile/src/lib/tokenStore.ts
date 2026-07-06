@@ -79,7 +79,11 @@ export async function clearTokens(): Promise<void> {
     webDelete(USER_KEY);
     return;
   }
-  await SecureStore.deleteItem(ACCESS_TOKEN_KEY);
-  await SecureStore.deleteItem(REFRESH_TOKEN_KEY);
-  await SecureStore.deleteItem(USER_KEY);
+  // expo-secure-store v14 only exposes the *Async variants; the sync
+  // `deleteItem` does not exist on this version, so we must await.
+  // Each delete is wrapped individually because a missing key can reject
+  // on some Android emulator builds — we still want the others to clear.
+  await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => undefined);
+  await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => undefined);
+  await SecureStore.deleteItemAsync(USER_KEY).catch(() => undefined);
 }

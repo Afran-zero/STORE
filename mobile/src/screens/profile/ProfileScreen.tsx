@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Text, View, StyleSheet, Pressable } from 'react-native';
+import { Alert, Text, View, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import { getStore, type Store } from '@/api/endpoints/stores';
 import { getAttendanceToday, type AttendanceRecord } from '@/api/endpoints/attendance';
 import { listTickets } from '@/api/endpoints/tickets';
 import { colors } from '@/lib/colors';
+import { scaleValue } from '@/lib/responsive';
 
 type Nav = NativeStackNavigationProp<Record<string, undefined>>;
 
@@ -21,6 +22,8 @@ export function ProfileScreen(): JSX.Element {
   const nav = useNavigation<Nav>();
   const storeId = user?.assignedStore ?? '';
   const [busy, setBusy] = useState(false);
+  const { width } = useWindowDimensions();
+  const s = (n: number) => scaleValue(n, width);
 
   const storeQuery = useQuery({
     queryKey: ['store', storeId],
@@ -58,6 +61,8 @@ export function ProfileScreen(): JSX.Element {
             setBusy(true);
             try {
               await logout();
+            } catch (err) {
+              Alert.alert('Could not log out', err instanceof Error ? err.message : 'Please try again.');
             } finally {
               setBusy(false);
             }
@@ -84,9 +89,13 @@ export function ProfileScreen(): JSX.Element {
       refreshing={storeQuery.isFetching || attendanceQuery.isFetching || ticketsQuery.isFetching}
     >
       <Card accent="yellow">
-        <Text style={styles.name}>{user?.name ?? 'Worker'}</Text>
-        <Text style={styles.email}>{user?.email ?? 'No email on file'}</Text>
-        <View style={styles.chipRow}>
+        <Text style={[styles.name, { fontSize: s(22) }]} numberOfLines={2}>
+          {user?.name ?? 'Worker'}
+        </Text>
+        <Text style={[styles.email, { fontSize: s(13) }]} numberOfLines={2}>
+          {user?.email ?? 'No email on file'}
+        </Text>
+        <View style={[styles.chipRow, { gap: s(8), marginTop: s(8) }]}>
           <StatusChip label={(user?.role ?? 'WORKER').toUpperCase()} tone="amber" />
           <StatusChip
             label={attendance ? (attendance.status ?? 'PRESENT') : 'OFFLINE'}
@@ -99,61 +108,88 @@ export function ProfileScreen(): JSX.Element {
       </Card>
 
       <Card>
-        <Text style={styles.sectionLabel}>Assigned store</Text>
+        <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+          Assigned store
+        </Text>
         {store ? (
-          <View style={{ gap: 4, marginTop: 6 }}>
-            <Text style={styles.storeName}>{store.name}</Text>
-            <Text style={styles.body}>
+          <View style={{ gap: s(4), marginTop: s(6) }}>
+            <Text style={[styles.storeName, { fontSize: s(17) }]} numberOfLines={2}>
+              {store.name}
+            </Text>
+            <Text style={[styles.body, { fontSize: s(13), lineHeight: s(20) }]} numberOfLines={3}>
               {store.address ?? 'No address on file'}
               {store.city ? `, ${store.city}` : ''}
             </Text>
-            <Text style={styles.body}>Code: {store.code ?? '—'}</Text>
-            <Text style={styles.body}>
+            <Text style={[styles.body, { fontSize: s(13), lineHeight: s(20) }]} numberOfLines={2}>
+              Code: {store.code ?? '—'}
+            </Text>
+            <Text style={[styles.body, { fontSize: s(13), lineHeight: s(20) }]} numberOfLines={2}>
               Hours: {store.openingTime ?? '—'} → {store.closingTime ?? '—'}
             </Text>
-            <Text style={styles.body}>Phone: {store.phone ?? '—'}</Text>
+            <Text style={[styles.body, { fontSize: s(13), lineHeight: s(20) }]} numberOfLines={2}>
+              Phone: {store.phone ?? '—'}
+            </Text>
           </View>
         ) : (
-          <Text style={styles.body}>
+          <Text style={[styles.body, { fontSize: s(13) }]} numberOfLines={3}>
             {storeId ? 'Loading store…' : 'You are not currently assigned to a store. Ask your manager.'}
           </Text>
         )}
       </Card>
 
       <Card>
-        <Text style={styles.sectionLabel}>Today</Text>
-        <View style={styles.statRow}>
-          <View>
-            <Text style={styles.statLabel}>Clocked in</Text>
-            <Text style={styles.statValue}>
+        <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+          Today
+        </Text>
+        <View
+          style={[
+            styles.statRow,
+            { gap: s(12), marginTop: s(8), flexWrap: 'wrap' },
+          ]}
+        >
+          <View style={{ minWidth: s(110), flexGrow: 1 }}>
+            <Text style={[styles.statLabel, { fontSize: s(11) }]} numberOfLines={1}>
+              Clocked in
+            </Text>
+            <Text style={[styles.statValue, { fontSize: s(18) }]} numberOfLines={1}>
               {attendance?.clockIn ? new Date(attendance.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
             </Text>
           </View>
-          <View>
-            <Text style={styles.statLabel}>Clocked out</Text>
-            <Text style={styles.statValue}>
+          <View style={{ minWidth: s(110), flexGrow: 1 }}>
+            <Text style={[styles.statLabel, { fontSize: s(11) }]} numberOfLines={1}>
+              Clocked out
+            </Text>
+            <Text style={[styles.statValue, { fontSize: s(18) }]} numberOfLines={1}>
               {attendance?.clockOut ? new Date(attendance.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
             </Text>
           </View>
         </View>
       </Card>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, { gap: s(10) }]}>
         <Pressable
           onPress={() => nav.navigate('Tickets')}
-          style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [styles.tile, { padding: s(14), borderRadius: s(18), gap: s(4) }, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.tileIcon}>🎫</Text>
-          <Text style={styles.tileLabel}>My tickets</Text>
-          <Text style={styles.tileCaption}>Submit and follow up with admin.</Text>
+          <Text style={[styles.tileIcon, { fontSize: s(22) }]}>🎫</Text>
+          <Text style={[styles.tileLabel, { fontSize: s(15) }]} numberOfLines={1}>
+            My tickets
+          </Text>
+          <Text style={[styles.tileCaption, { fontSize: s(11) }]} numberOfLines={3}>
+            Submit and follow up with admin.
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => nav.navigate('Recipes')}
-          style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [styles.tile, { padding: s(14), borderRadius: s(18), gap: s(4) }, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.tileIcon}>📖</Text>
-          <Text style={styles.tileLabel}>Recipes</Text>
-          <Text style={styles.tileCaption}>Prep reference for every menu item.</Text>
+          <Text style={[styles.tileIcon, { fontSize: s(22) }]}>📖</Text>
+          <Text style={[styles.tileLabel, { fontSize: s(15) }]} numberOfLines={1}>
+            Recipes
+          </Text>
+          <Text style={[styles.tileCaption, { fontSize: s(11) }]} numberOfLines={3}>
+            Prep reference for every menu item.
+          </Text>
         </Pressable>
       </View>
 
@@ -168,27 +204,24 @@ export function ProfileScreen(): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  name: { fontSize: 22, fontWeight: '900', color: colors.text },
-  email: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  chipRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
-  sectionLabel: { fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  storeName: { fontSize: 17, fontWeight: '900', color: colors.text },
-  body: { fontSize: 13, color: colors.text, lineHeight: 20 },
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  statLabel: { fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  statValue: { fontSize: 18, fontWeight: '900', color: colors.text, marginTop: 2 },
-  actions: { flexDirection: 'row', gap: 12 },
+  name: { fontWeight: '900', color: colors.text },
+  email: { color: colors.muted, fontWeight: '600' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  sectionLabel: { fontWeight: '900', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  storeName: { fontWeight: '900', color: colors.text },
+  body: { color: colors.text },
+  statRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  statLabel: { fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
+  statValue: { fontWeight: '900', color: colors.text, marginTop: 2 },
+  actions: { flexDirection: 'row' },
   tile: {
     flex: 1,
-    padding: 14,
-    borderRadius: 18,
     borderWidth: 2,
     borderColor: colors.borderStrong,
     backgroundColor: colors.background,
-    gap: 4,
   },
-  tileIcon: { fontSize: 22 },
-  tileLabel: { fontSize: 15, fontWeight: '900', color: colors.text },
-  tileCaption: { fontSize: 11, color: colors.muted, fontWeight: '600' },
+  tileIcon: {},
+  tileLabel: { fontWeight: '900', color: colors.text },
+  tileCaption: { color: colors.muted, fontWeight: '600' },
   pressed: { opacity: 0.85 },
 });

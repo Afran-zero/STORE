@@ -1,4 +1,7 @@
+import axios from 'axios';
+
 import { apiClient } from '@/api/client';
+import { getAccessToken } from '@/lib/tokenStore';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -239,16 +242,22 @@ export async function getStoreSummary(storeId: string): Promise<StoreSummaryResp
 
 /**
  * Download a CSV for a named report. Returns a Blob URL the caller can wrap
- * in an `<a download>` click.
+ * in an `<a download>` click. Uses raw axios to bypass the apiClient envelope
+ * interceptor so we can read headers (e.g. ``Content-Disposition``).
  */
 export async function downloadReportCsv(
   report: 'revenue' | 'profit' | 'inventory' | 'employees' | 'stores' | 'food',
   range: DateRange = {},
   groupBy: 'day' | 'week' | 'month' | 'store' | 'food' = 'day',
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await apiClient.get(
-    `/api/v1/analytics/export${qs({ type: 'csv', report, ...range, groupBy })}`,
-    { responseType: 'blob' },
+  const baseURL = (apiClient.defaults.baseURL as string | undefined) ?? '';
+  const token = getAccessToken();
+  const response = await axios.get(
+    `${baseURL}/api/v1/analytics/export${qs({ type: 'csv', report, ...range, groupBy })}`,
+    {
+      responseType: 'blob',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
   );
   const blob = response.data as Blob;
   const cd = (response.headers as Record<string, string>)['content-disposition'] ?? '';

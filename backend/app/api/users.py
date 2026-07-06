@@ -109,6 +109,23 @@ async def change_status(
     return success_payload(item)
 
 
+@router.delete("/{user_id}", status_code=status.HTTP_200_OK)
+async def delete_user(
+    user_id: str,
+    current_user: CurrentUser = Depends(_role_guard),
+    service: UserService = Depends(_service),
+):
+    """Permanently delete a user. Returns `{ deleted: true }` on success,
+    raises 404 if the user does not exist."""
+    try:
+        deleted = await service.delete_user(business_id=_bid(current_user), user_id=user_id)
+    except UserNotFoundError:
+        raise NotFoundError("USER_NOT_FOUND", "User not found")
+    if not deleted:
+        raise NotFoundError("USER_NOT_FOUND", "User not found")
+    return success_payload({"deleted": True, "userId": user_id}, message="User deleted")
+
+
 @router.patch("/{user_id}/assign-store")
 async def assign_store(
     user_id: str,
@@ -123,16 +140,16 @@ async def assign_store(
     return success_payload(item)
 
 
-@router.post("/{user_id}/reset-password")
+@router.patch("/{user_id}/reset-password")
 async def reset_password(
     user_id: str,
     body: UserResetPasswordRequest,
     current_user: CurrentUser = Depends(_role_guard),
     service: UserService = Depends(_service),
 ):
-    new_pwd = getattr(body, "newPassword", None)
+    new_pwd = body.password
     try:
         await service.reset_password(business_id=_bid(current_user), user_id=user_id, new_password=new_pwd)
     except UserNotFoundError:
         raise NotFoundError("USER_NOT_FOUND", "User not found")
-    return success_payload({"reset": True})
+    return success_payload({"reset": True, "userId": user_id}, message="Password reset")

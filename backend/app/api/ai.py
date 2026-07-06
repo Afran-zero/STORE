@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.response import success_payload
 from app.dependencies.auth import CurrentUser, get_current_user
+from app.dependencies.rate_limit import rate_limit_ai_chat
 from app.schemas.ai import AIChatRequest, AIConversationCreateRequest
 from app.services.ai_service import AIService
 
@@ -13,7 +16,10 @@ service = AIService()
 
 
 @router.post("/conversations", status_code=status.HTTP_201_CREATED)
-async def create_ai_conversation(payload: AIConversationCreateRequest, current_user: CurrentUser = Depends(get_current_user)):
+async def create_ai_conversation(
+    payload: AIConversationCreateRequest,
+    current_user: Annotated[CurrentUser, Depends(rate_limit_ai_chat)],
+):
     conversation = await service.create_conversation(
         business_id=current_user.businessId or "",
         user_id=current_user.userId or "",
@@ -58,7 +64,10 @@ async def delete_ai_conversation(conversation_id: str, current_user: CurrentUser
 
 
 @router.post("/chat")
-async def ai_chat(payload: AIChatRequest, current_user: CurrentUser = Depends(get_current_user)):
+async def ai_chat(
+    payload: AIChatRequest,
+    current_user: Annotated[CurrentUser, Depends(rate_limit_ai_chat)],
+):
     data = await service.chat(
         business_id=current_user.businessId or "",
         user_id=current_user.userId or "",

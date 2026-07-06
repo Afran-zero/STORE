@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { Text, TextInput, View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-
 import { AppScreen } from '@/components/AppScreen';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useAuth } from '@/context/AuthContext';
 import { colors } from '@/lib/colors';
+import { scaleValue, useSizeClass } from '@/lib/responsive';
 
 export function LoginScreen(): JSX.Element {
   const { login } = useAuth();
+  const { width, isCompact } = useSizeClass();
+  const s = (n: number) => scaleValue(n, width);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +34,22 @@ export function LoginScreen(): JSX.Element {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.kav}
+      style={[styles.kav, { padding: isCompact ? s(12) : s(20) }]}
     >
-      <AppScreen title="Worker sign in" subtitle="Use your store credentials to continue." scrollable={false}>
-        <View style={styles.card}>
-          <Text style={styles.label}>Email</Text>
+      <AppScreen
+        title="Worker sign in"
+        subtitle="Use your store credentials to continue."
+        scrollable={false}
+      >
+        <View
+          style={[
+            styles.card,
+            { gap: s(10), padding: s(22), borderRadius: s(24), borderWidth: 2 },
+          ]}
+        >
+          <Text style={[styles.label, { fontSize: s(12) }]} numberOfLines={1}>
+            Email
+          </Text>
           <TextInput
             placeholder="you@store.com"
             placeholderTextColor={colors.muted}
@@ -44,28 +57,50 @@ export function LoginScreen(): JSX.Element {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                borderRadius: s(16),
+                paddingHorizontal: s(14),
+                paddingVertical: s(14),
+                fontSize: s(15),
+              },
+            ]}
           />
-          <Text style={styles.label}>Password</Text>
+          <Text style={[styles.label, { fontSize: s(12) }]} numberOfLines={1}>
+            Password
+          </Text>
           <TextInput
             placeholder="••••••••"
             placeholderTextColor={colors.muted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                borderRadius: s(16),
+                paddingHorizontal: s(14),
+                paddingVertical: s(14),
+                fontSize: s(15),
+              },
+            ]}
           />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <Text style={[styles.error, { fontSize: s(13) }]} numberOfLines={3}>
+              {error}
+            </Text>
+          ) : null}
           <PrimaryButton
             label={loading ? 'Signing in…' : 'Sign in'}
             onPress={() => {
               void submit();
             }}
             disabled={loading}
-            style={styles.signinButton}
+            style={{ marginTop: s(10) }}
           />
         </View>
-        <Text style={styles.hint}>
+        <Text style={[styles.hint, { fontSize: s(12), lineHeight: s(18), marginTop: s(14) }]} numberOfLines={4}>
           You must be assigned to a store. If you don't know your credentials, ask your store admin.
         </Text>
       </AppScreen>
@@ -76,26 +111,22 @@ export function LoginScreen(): JSX.Element {
 const styles = StyleSheet.create({
   kav: { flex: 1, backgroundColor: colors.background },
   card: {
-    gap: 10,
-    padding: 22,
-    borderRadius: 24,
-    borderWidth: 2,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
   },
-  label: { fontSize: 12, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
+  label: {
+    fontWeight: '800',
+    color: colors.muted,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
   input: {
     borderWidth: 2,
     borderColor: colors.border,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
     backgroundColor: colors.background,
     color: colors.text,
-    fontSize: 15,
     fontWeight: '600',
   },
-  error: { color: colors.danger, fontSize: 13, fontWeight: '700', marginTop: 4 },
-  signinButton: { marginTop: 10 },
-  hint: { fontSize: 12, color: colors.muted, textAlign: 'center', lineHeight: 18 },
+  error: { color: colors.danger, fontWeight: '700', marginTop: 4 },
+  hint: { color: colors.muted, textAlign: 'center' },
 });

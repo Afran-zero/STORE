@@ -7,16 +7,20 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_openai import ChatOpenAI
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.ai.guard import check_grounding
 from app.ai.prompts import SYSTEM_PROMPT
 from app.ai.tools import (
     build_employee_tools,
+    build_food_tools,
     build_inventory_tools,
+    build_mcp_query_tools,
     build_recipe_tools,
     build_sales_tools,
     build_store_tools,
 )
 from app.config import get_settings
 from app.core.exceptions import ServiceUnavailableError
+from app.services.cache import cached
 
 
 def _safe_json(value: Any) -> str:
@@ -45,6 +49,29 @@ def _build_model() -> ChatOpenAI:
     )
 
 
+async def _invoke_tool_cached(tool, args: dict[str, Any], *, business_id: str, ttl: int) -> dict[str, Any]:
+    """Run a LangChain tool, caching the result for ``ttl`` seconds.
+
+    The cache key is derived from ``(businessId, tool name, args)`` so the
+    same query from the same business returns the same doc across turns.
+    """
+
+    async def producer() -> dict[str, Any]:
+        try:
+            return await tool.ainvoke(args)
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    result = await cached(
+        scope="aitool",
+        business_id=business_id,
+        params={"tool": tool.name, "args": args},
+        ttl=ttl,
+        producer=producer,
+    )
+    return result if isinstance(result, dict) else {"result": result}
+
+
 async def run_ai_agent(
     db: AsyncIOMotorDatabase,
     *,
@@ -58,9 +85,11 @@ async def run_ai_agent(
     tools = [
         *build_sales_tools(db, business_id),
         *build_inventory_tools(db, business_id),
+        *build_food_tools(db, business_id),
         *build_recipe_tools(db, business_id),
         *build_employee_tools(db, business_id=business_id, current_user_id=user_id, current_user_role=role),
         *build_store_tools(db, business_id),
+        *build_mcp_query_tools(db, business_id),
     ]
     tool_map = {tool.name: tool for tool in tools}
 
@@ -97,10 +126,12 @@ async def run_ai_agent(
             if tool is None:
                 result: dict[str, Any] = {"error": f"Unknown tool: {name}"}
             else:
-                try:
-                    result = await tool.ainvoke(args)
-                except Exception as exc:
-                    result = {"error": str(exc)}
+                result = await _invoke_tool_cached(
+                    tool,
+                    args,
+                    business_id=business_id,
+                    ttl=settings.ai_cache_tool_ttl_seconds,
+                )
             tool_results_payload.append({"tool": name, "result": result})
             messages.append(ToolMessage(content=_safe_json(result), tool_call_id=call_id or name or "tool"))
         ai_response = await model.ainvoke(messages)
@@ -111,8 +142,16 @@ async def run_ai_agent(
     if isinstance(content, list):
         content = "\n".join(str(item) for item in content)
 
+    final_content = str(content or "I could not generate a response.")
+
+    grounding_issue = check_grounding(final_content, tool_calls_payload)
+    if grounding_issue:
+        # Replace the ungrounded reply with a clearer message; the tool calls
+        # and tool results are still persisted so the user can see what we tried.
+        final_content = grounding_issue
+
     return {
-        "content": str(content or "I could not generate a response."),
+        "content": final_content,
         "toolCalls": tool_calls_payload,
         "toolResults": tool_results_payload,
         "usage": usage_payload,

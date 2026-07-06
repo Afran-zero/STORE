@@ -515,6 +515,50 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Delete User",
+        "description": "Permanently delete a user. Returns `{ deleted: true }` on success,\nraises 404 if the user does not exist.",
+        "operationId": "delete_user_api_v1_users__user_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/users/{user_id}/status": {
@@ -628,12 +672,12 @@
       }
     },
     "/api/v1/users/{user_id}/reset-password": {
-      "post": {
+      "patch": {
         "tags": [
           "users"
         ],
         "summary": "Reset Password",
-        "operationId": "reset_password_api_v1_users__user_id__reset_password_post",
+        "operationId": "reset_password_api_v1_users__user_id__reset_password_patch",
         "security": [
           {
             "HTTPBearer": []
@@ -824,6 +868,50 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Delete Store",
+        "description": "Permanently delete a store and cascade to its scoped collections.\n\nCascades to `store_inventory`, `sales`, `attendance_records`, and\n`daily_assignments` so the `storeId` no longer appears anywhere. Returns\n`{ deleted: true }` on success; raises 404 if the store does not exist.",
+        "operationId": "delete_store_api_v1_stores__store_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3292,6 +3380,100 @@
         }
       }
     },
+    "/api/v1/allocations/store/{store_id}/ingredients": {
+      "get": {
+        "tags": [
+          "allocations"
+        ],
+        "summary": "Store Ingredients",
+        "description": "Per-ingredient allocated quantities for a store.\n\nAggregates ``deductions[].required`` across the matching allocations so the\nworker UI can show the *allocated* amount per ingredient (e.g. \"10 buns\nallocated today\") rather than the cumulative shelf stock from\n``store_inventory``.",
+        "operationId": "store_ingredients_api_v1_allocations_store__store_id__ingredients_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/allocations/{allocation_id}": {
       "get": {
         "tags": [
@@ -4962,6 +5144,50 @@
         ]
       }
     },
+    "/api/v1/ai/chat/stream": {
+      "post": {
+        "tags": [
+          "ai-stream"
+        ],
+        "summary": "Ai Chat Stream",
+        "operationId": "ai_chat_stream_api_v1_ai_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/mcp/manifest": {
       "get": {
         "tags": [
@@ -5446,17 +5672,14 @@
         "properties": {
           "storeId": {
             "type": "string",
-            "minLength": 1,
             "title": "Storeid"
           },
           "foodItemId": {
             "type": "string",
-            "minLength": 1,
             "title": "Fooditemid"
           },
           "quantity": {
             "type": "number",
-            "exclusiveMinimum": 0.0,
             "title": "Quantity"
           }
         },
@@ -5466,8 +5689,7 @@
           "foodItemId",
           "quantity"
         ],
-        "title": "FoodAllocationRequest",
-        "description": "Allocate N units of a food item to a store; ingredients are auto-deducted\nfrom store inventory according to the recipe."
+        "title": "FoodAllocationRequest"
       },
       "FoodCreateRequest": {
         "properties": {
@@ -5647,17 +5869,6 @@
             "type": "string",
             "minLength": 1,
             "title": "Unit"
-          },
-          "currentStock": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Currentstock"
           },
           "minimumStock": {
             "type": "number",
@@ -6828,15 +7039,15 @@
       },
       "UserResetPasswordRequest": {
         "properties": {
-          "email": {
+          "password": {
             "type": "string",
-            "minLength": 1,
-            "title": "Email"
+            "minLength": 6,
+            "title": "Password"
           }
         },
         "type": "object",
         "required": [
-          "email"
+          "password"
         ],
         "title": "UserResetPasswordRequest"
       },

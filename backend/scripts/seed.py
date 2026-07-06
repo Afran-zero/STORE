@@ -66,6 +66,7 @@ async def upsert_admin(db) -> None:
 
 INGREDIENTS = [
     {"name": "Chicken Patty", "unit": "pcs",  "minimumStock": 20,   "averageCost": 1.20, "purchasePrice": 1.20},
+    {"name": "Beef Patty",    "unit": "pcs",  "minimumStock": 20,   "averageCost": 1.80, "purchasePrice": 1.80},
     {"name": "Burger Bun",   "unit": "pcs",  "minimumStock": 30,   "averageCost": 0.25, "purchasePrice": 0.25},
     {"name": "Cheese Slice", "unit": "pcs",  "minimumStock": 25,   "averageCost": 0.30, "purchasePrice": 0.30},
     {"name": "Lettuce",      "unit": "g",    "minimumStock": 500,  "averageCost": 0.01, "purchasePrice": 0.01},
@@ -171,6 +172,73 @@ async def upsert_burger_food_item(db, recipe_id: str) -> str:
     return str(res.inserted_id)
 
 
+async def upsert_beef_burger_recipe(db, ingredient_ids: dict[str, str]) -> str:
+    """Reuses Burger Bun / Cheese Slice / Lettuce / Mayonnaise. The only new
+    item is Beef Patty, which is added to INGREDIENTS in this same script."""
+    existing = await db.recipes.find_one({"businessId": BUSINESS_ID, "name": "Beef Burger"})
+    payload = {
+        "businessId": BUSINESS_ID,
+        "name": "Beef Burger",
+        "ingredients": [
+            {"ingredientId": ingredient_ids["Beef Patty"],   "quantity": 1,  "unit": "pcs", "optional": False, "notes": None},
+            {"ingredientId": ingredient_ids["Burger Bun"],   "quantity": 1,  "unit": "pcs", "optional": False, "notes": None},
+            {"ingredientId": ingredient_ids["Cheese Slice"], "quantity": 1,  "unit": "pcs", "optional": False, "notes": None},
+            {"ingredientId": ingredient_ids["Lettuce"],      "quantity": 20, "unit": "g",   "optional": True,  "notes": None},
+            {"ingredientId": ingredient_ids["Mayonnaise"],   "quantity": 15, "unit": "g",   "optional": False, "notes": None},
+        ],
+        "preparationSteps": [
+            "Toast the bun lightly on the pan.",
+            "Cook the beef patty 3 minutes per side for medium.",
+            "Assemble: bun base -> mayo -> lettuce -> patty -> cheese -> bun top.",
+        ],
+        "servingSize": 1,
+        "images": [],
+        "status": "APPROVED",
+        "versions": [],
+        "isAiGenerated": False,
+        "createdAt": _now(),
+        "updatedAt": _now(),
+    }
+    if existing:
+        await db.recipes.update_one({"_id": existing["_id"]}, {"$set": {**payload, "createdAt": existing.get("createdAt", _now())}})
+        print("  refreshed Beef Burger recipe")
+        return str(existing["_id"])
+    res = await db.recipes.insert_one(payload)
+    print("  inserted Beef Burger recipe")
+    return str(res.inserted_id)
+
+
+async def upsert_beef_burger_food_item(db, recipe_id: str) -> str:
+    # Cost = 1 beef patty + 1 bun + 1 cheese + 20g lettuce + 15g mayo.
+    # Beef Patty is the only new ingredient; everything else is shared with the
+    # Classic Burger so this only adds one line to INGREDIENTS.
+    cost = 1 * 1.80 + 1 * 0.25 + 1 * 0.30 + 20 * 0.01 + 15 * 0.02
+    price = 6.50
+    payload = {
+        "businessId": BUSINESS_ID,
+        "recipeId": recipe_id,
+        "name": "Beef Burger",
+        "category": "Burgers",
+        "price": price,
+        "cost": round(cost, 2),
+        "estimatedProfit": round(price - cost, 2),
+        "preparationTime": 8,
+        "assignedStores": [],
+        "image": None,
+        "status": "ACTIVE",
+        "createdAt": _now(),
+        "updatedAt": _now(),
+    }
+    existing = await db.food_items.find_one({"businessId": BUSINESS_ID, "name": "Beef Burger"})
+    if existing:
+        await db.food_items.update_one({"_id": existing["_id"]}, {"$set": {**payload, "createdAt": existing.get("createdAt", _now())}})
+        print("  refreshed Beef Burger menu item")
+        return str(existing["_id"])
+    res = await db.food_items.insert_one(payload)
+    print("  inserted Beef Burger menu item")
+    return str(res.inserted_id)
+
+
 async def upsert_store(db) -> str:
     existing = await db.stores.find_one({"businessId": BUSINESS_ID, "name": "Cart 1"})
     payload = {
@@ -227,15 +295,21 @@ async def main() -> None:
     ingredient_ids = await upsert_ingredients(db)
     recipe_id = await upsert_burger_recipe(db, ingredient_ids)
     food_id = await upsert_burger_food_item(db, recipe_id)
+    beef_recipe_id = await upsert_beef_burger_recipe(db, ingredient_ids)
+    beef_food_id = await upsert_beef_burger_food_item(db, beef_recipe_id)
     store_id = await upsert_store(db)
     await upsert_worker(db, store_id)
 
     # Assign food to store so it appears on the store's menu.
-    await db.food_items.update_one(
-        {"_id": ObjectId(food_id)},
-        {"$addToSet": {"assignedStores": store_id}, "$set": {"updatedAt": _now()}},
-    )
-    print(f"  assigned Classic Burger to Cart 1 ({store_id})")
+    for label, food_identifier in (
+        ("Classic Burger", food_id),
+        ("Beef Burger", beef_food_id),
+    ):
+        await db.food_items.update_one(
+            {"_id": ObjectId(food_identifier)},
+            {"$addToSet": {"assignedStores": store_id}, "$set": {"updatedAt": _now()}},
+        )
+        print(f"  assigned {label} to Cart 1 ({store_id})")
 
     print("Done.")
 

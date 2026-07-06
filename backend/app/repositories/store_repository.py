@@ -57,3 +57,11 @@ class StoreRepository(BaseRepository):
         await self.collection.update_one({"_id": object_id, "businessId": business_id}, {"$set": updates})
         doc = await self.collection.find_one({"_id": object_id, "businessId": business_id})
         return self._serialize(doc) if doc else None
+
+    async def delete(self, *, business_id: str, store_id: str) -> bool:
+        try:
+            object_id = ObjectId(store_id)
+        except Exception:
+            return False
+        result = await self.collection.delete_one({"_id": object_id, "businessId": business_id})
+        return result.deleted_count == 1

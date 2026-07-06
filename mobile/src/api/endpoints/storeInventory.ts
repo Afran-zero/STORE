@@ -7,7 +7,14 @@ export interface StoreInventoryRow {
   ingredientName?: string | null;
   quantity: number;
   minimumStock?: number;
-  unit?: string;
+  unit?: string | null;
+  // Backend may also embed a resolved ingredient block (name/unit joined).
+  ingredient?: {
+    id: string;
+    name?: string | null;
+    unit?: string | null;
+    category?: string | null;
+  };
 }
 
 export async function getStoreInventory(storeId: string): Promise<StoreInventoryRow[]> {

@@ -1,14 +1,34 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 
 import { colors } from '@/lib/colors';
+import { scaleValue } from '@/lib/responsive';
 
 type Tone = 'yellow' | 'green' | 'red' | 'gray' | 'amber';
 
 export function StatusChip({ label, tone = 'gray' }: { label: string; tone?: Tone }): JSX.Element {
   const palette = tones[tone];
+  const { width } = useWindowDimensions();
+  const padV = scaleValue(4, width);
+  const padH = scaleValue(10, width);
+  const size = scaleValue(11, width);
   return (
-    <View style={[styles.chip, { backgroundColor: palette.bg, borderColor: palette.border }]}>
-      <Text style={[styles.text, { color: palette.fg }]}>{label}</Text>
+    <View
+      style={[
+        styles.chip,
+        {
+          backgroundColor: palette.bg,
+          borderColor: palette.border,
+          paddingVertical: padV,
+          paddingHorizontal: padH,
+        },
+      ]}
+    >
+      <Text
+        style={[styles.text, { color: palette.fg, fontSize: size }]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -24,10 +44,8 @@ const tones: Record<Tone, { bg: string; fg: string; border: string }> = {
 const styles = StyleSheet.create({
   chip: {
     alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
   },
-  text: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  text: { fontWeight: '800', letterSpacing: 0.4 },
 });

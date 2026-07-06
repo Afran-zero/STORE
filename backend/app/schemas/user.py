@@ -27,4 +27,4 @@ class UserAssignStoreRequest(BaseModel):
 
 
 class UserResetPasswordRequest(BaseModel):
-    email: Annotated[str, Field(min_length=1)]
+    password: Annotated[str, Field(min_length=6)]

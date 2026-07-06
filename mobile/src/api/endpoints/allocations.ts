@@ -75,3 +75,37 @@ export async function getStoreAllocationSummary(
   const q = qs.toString();
   return apiClient.get(`/api/v1/allocations/store/${storeId}/summary${q ? `?${q}` : ''}`);
 }
+
+export interface AllocatedIngredientItem {
+  ingredientId: string;
+  ingredientName?: string | null;
+  unit?: string | null;
+  allocated: number;
+  byFood: Array<{
+    foodItemId: string;
+    foodName?: string | null;
+    quantity: number;
+  }>;
+}
+
+export interface StoreIngredientsAllocated {
+  storeId: string;
+  start?: string | null;
+  end?: string | null;
+  statuses: string[];
+  items: AllocatedIngredientItem[];
+}
+
+export async function getStoreAllocatedIngredients(
+  storeId: string,
+  range: { start?: string; end?: string; status?: string[] } = {},
+): Promise<StoreIngredientsAllocated> {
+  const qs = new URLSearchParams();
+  if (range.start) qs.set('start', range.start);
+  if (range.end) qs.set('end', range.end);
+  if (range.status && range.status.length > 0) {
+    qs.set('status', range.status.join(','));
+  }
+  const q = qs.toString();
+  return apiClient.get(`/api/v1/allocations/store/${storeId}/ingredients${q ? `?${q}` : ''}`);
+}

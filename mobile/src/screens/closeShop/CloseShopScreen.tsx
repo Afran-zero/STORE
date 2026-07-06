@@ -19,6 +19,7 @@ import {
 } from '@/api/endpoints/allocations';
 import { getStoreLowStock, getStoreInventory } from '@/api/endpoints/storeInventory';
 import { colors } from '@/lib/colors';
+import { scaleValue, useSizeClass } from '@/lib/responsive';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -38,6 +39,8 @@ export function CloseShopScreen(): JSX.Element {
   const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
   const today = useMemo(() => todayIso(), []);
+  const { width, isCompact } = useSizeClass();
+  const s = (n: number) => scaleValue(n, width);
 
   const attendanceQuery = useQuery({
     queryKey: ['attendance', 'today', user?.userId ?? ''],
@@ -124,6 +127,12 @@ export function CloseShopScreen(): JSX.Element {
   const inventoryRows = inventoryQuery.data ?? [];
   const lowStockList = lowStockQuery.data ?? [];
 
+  // Stack shift times on narrow phones so the values never overflow.
+  const shiftDirection: 'row' | 'column' = isCompact ? 'column' : 'row';
+  // Stack stat tiles inside each Card on narrow phones (3 columns would clip
+  // hard on a 360px-wide phone).
+  const statDirection: 'row' | 'column' = isCompact ? 'column' : 'row';
+
   return (
     <AppScreen
       title="Close shop"
@@ -133,31 +142,50 @@ export function CloseShopScreen(): JSX.Element {
       scrollable={false}
     >
       <ScrollView
-        contentContainerStyle={{ gap: 14, paddingBottom: 24 }}
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={onRefresh} tintColor={colors.accent} />}
+        contentContainerStyle={{ gap: s(14), paddingBottom: s(24) }}
+        refreshControl={
+          <RefreshControl refreshing={isFetching} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
       >
         <Card accent={clockedOut ? 'green' : 'yellow'}>
-          <Text style={styles.sectionLabel}>Shift</Text>
-          <View style={styles.shiftRow}>
-            <View>
-              <Text style={styles.shiftLabel}>Clock in</Text>
-              <Text style={styles.shiftValue}>{fmt(attendance?.clockIn)}</Text>
+          <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+            Shift
+          </Text>
+          <View
+            style={[
+              styles.shiftRow,
+              { flexDirection: shiftDirection, gap: s(12), marginTop: s(8) },
+            ]}
+          >
+            <View style={{ flex: shiftDirection === 'row' ? 1 : undefined }}>
+              <Text style={[styles.shiftLabel, { fontSize: s(11) }]} numberOfLines={1}>
+                Clock in
+              </Text>
+              <Text style={[styles.shiftValue, { fontSize: s(22) }]} numberOfLines={1}>
+                {fmt(attendance?.clockIn)}
+              </Text>
             </View>
-            <View>
-              <Text style={styles.shiftLabel}>Clock out</Text>
-              <Text style={styles.shiftValue}>{fmt(attendance?.clockOut)}</Text>
+            <View style={{ flex: shiftDirection === 'row' ? 1 : undefined }}>
+              <Text style={[styles.shiftLabel, { fontSize: s(11) }]} numberOfLines={1}>
+                Clock out
+              </Text>
+              <Text style={[styles.shiftValue, { fontSize: s(22) }]} numberOfLines={1}>
+                {fmt(attendance?.clockOut)}
+              </Text>
             </View>
           </View>
-          <View style={{ marginTop: 10 }}>
+          <View style={{ marginTop: s(10) }}>
             <StatusChip
               label={clockedOut ? 'CLOSED' : clockedIn ? 'ON SHIFT' : 'NOT STARTED'}
               tone={clockedOut ? 'green' : clockedIn ? 'amber' : 'gray'}
             />
           </View>
           {clockedOut ? (
-            <Text style={styles.body}>You’re already clocked out for the day.</Text>
+            <Text style={[styles.body, { fontSize: s(13) }]} numberOfLines={3}>
+              You're already clocked out for the day.
+            </Text>
           ) : (
-            <View style={{ marginTop: 12 }}>
+            <View style={{ marginTop: s(12) }}>
               <PrimaryButton
                 label={
                   clockOutMut.isPending
@@ -170,7 +198,13 @@ export function CloseShopScreen(): JSX.Element {
                 disabled={clockOutMut.isPending || !clockedIn}
               />
               {!clockedIn ? (
-                <Text style={styles.warnText}>
+                <Text
+                  style={[
+                    styles.warnText,
+                    { fontSize: s(12), marginTop: s(8) },
+                  ]}
+                  numberOfLines={3}
+                >
                   You need to clock in for the day before you can close the shop.
                 </Text>
               ) : null}
@@ -179,13 +213,25 @@ export function CloseShopScreen(): JSX.Element {
         </Card>
 
         <Card>
-          <Text style={styles.sectionLabel}>Today’s sales</Text>
-          <View style={styles.statRow}>
+          <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+            Today's sales
+          </Text>
+          <View
+            style={[
+              styles.statRow,
+              { flexDirection: statDirection, gap: s(8), marginTop: s(6) },
+            ]}
+          >
             <Stat label="Sales" value={String(todays.length)} />
             <Stat label="Units" value={String(totalUnits)} />
             <Stat label="Items" value={String(uniqueItems)} />
           </View>
-          <View style={[styles.statRow, { marginTop: 12 }]}>
+          <View
+            style={[
+              styles.statRow,
+              { flexDirection: statDirection, gap: s(8), marginTop: s(12) },
+            ]}
+          >
             <Stat label="Revenue" value={`$${totalRevenue.toFixed(2)}`} accent />
             <Stat
               label="Profit"
@@ -196,21 +242,34 @@ export function CloseShopScreen(): JSX.Element {
         </Card>
 
         <Card>
-          <Text style={styles.sectionLabel}>Allocations</Text>
+          <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+            Allocations
+          </Text>
           {allocations.length === 0 ? (
-            <Text style={styles.body}>
+            <Text style={[styles.body, { fontSize: s(13) }]} numberOfLines={3}>
               No allocations recorded today. Ask your manager before wrapping up.
             </Text>
           ) : (
             <>
-              <View style={styles.statRow}>
+              <View
+                style={[
+                  styles.statRow,
+                  { flexDirection: statDirection, gap: s(8), marginTop: s(6) },
+                ]}
+              >
                 <Stat label="Batches" value={String(allocations.length)} />
                 <Stat label="Units left" value={String(remaining)} />
               </View>
-              <View style={{ marginTop: 8, gap: 4 }}>
+              <View style={{ marginTop: s(8), gap: s(4) }}>
                 {allocations.slice(0, 6).map((a) => (
-                  <Text key={a.id} style={styles.body}>
-                    • {a.foodName ?? a.foodItemId} — {Number(a.quantity ?? 0).toFixed(0)} units · sold {Number(a.sold ?? 0).toFixed(0)} · remaining {Number(a.remaining ?? 0).toFixed(0)}
+                  <Text
+                    key={a.id}
+                    style={[styles.body, { fontSize: s(13) }]}
+                    numberOfLines={3}
+                  >
+                    • {a.foodName ?? a.foodItemId} — {Number(a.quantity ?? 0).toFixed(0)} units · sold{' '}
+                    {Number(a.sold ?? 0).toFixed(0)} · remaining{' '}
+                    {Number(a.remaining ?? 0).toFixed(0)}
                   </Text>
                 ))}
               </View>
@@ -219,11 +278,20 @@ export function CloseShopScreen(): JSX.Element {
         </Card>
 
         <Card accent={lowStockList.length > 0 ? 'red' : 'green'}>
-          <Text style={styles.sectionLabel}>Stock check</Text>
+          <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+            Stock check
+          </Text>
           {inventoryRows.length === 0 ? (
-            <Text style={styles.body}>No ingredients stocked at this store.</Text>
+            <Text style={[styles.body, { fontSize: s(13) }]} numberOfLines={3}>
+              No ingredients stocked at this store.
+            </Text>
           ) : (
-            <View style={styles.statRow}>
+            <View
+              style={[
+                styles.statRow,
+                { flexDirection: statDirection, gap: s(8), marginTop: s(6) },
+              ]}
+            >
               <Stat label="Ingredients" value={String(inventoryRows.length)} />
               <Stat
                 label="Low stock"
@@ -233,11 +301,16 @@ export function CloseShopScreen(): JSX.Element {
             </View>
           )}
           {lowStockList.length > 0 ? (
-            <View style={{ marginTop: 8 }}>
+            <View style={{ marginTop: s(8) }}>
               <StatusChip tone="red" label={`${lowStockList.length} ingredient${lowStockList.length === 1 ? '' : 's'} low`} />
               {lowStockList.slice(0, 5).map((row) => (
-                <Text key={`${row.storeId}-${row.ingredientId}`} style={styles.body}>
-                  • {row.ingredientName ?? row.ingredientId}: {Number(row.quantity ?? 0).toFixed(2)} {row.unit ?? ''} (min {Number(row.minimumStock ?? 0).toFixed(2)})
+                <Text
+                  key={`${row.storeId}-${row.ingredientId}`}
+                  style={[styles.body, { fontSize: s(13) }]}
+                  numberOfLines={3}
+                >
+                  • {row.ingredientName ?? row.ingredientId}: {Number(row.quantity ?? 0).toFixed(2)}{' '}
+                  {row.unit ?? ''} (min {Number(row.minimumStock ?? 0).toFixed(2)})
                 </Text>
               ))}
             </View>
@@ -245,8 +318,10 @@ export function CloseShopScreen(): JSX.Element {
         </Card>
 
         <Card>
-          <Text style={styles.sectionLabel}>Reminder</Text>
-          <Text style={styles.body}>
+          <Text style={[styles.sectionLabel, { fontSize: s(12) }]} numberOfLines={1}>
+            Reminder
+          </Text>
+          <Text style={[styles.body, { fontSize: s(13) }]} numberOfLines={4}>
             Closing the shop only clocks you out — it does not delete any sales or
             allocations. Managers review the day using the web reports.
           </Text>
@@ -259,22 +334,33 @@ export function CloseShopScreen(): JSX.Element {
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }): JSX.Element {
   return (
     <View style={{ flex: 1 }}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, accent ? styles.statValueAccent : null]}>{value}</Text>
+      <Text style={[styles.statLabel, { fontSize: 11 }]} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text
+        style={[styles.statValue, accent ? styles.statValueAccent : null, { fontSize: 22 }]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionLabel: { fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  shiftRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  shiftLabel: { fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  shiftValue: { fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 4 },
-  body: { fontSize: 13, color: colors.text, lineHeight: 20, marginTop: 4 },
-  warnText: { fontSize: 12, color: colors.muted, fontWeight: '700', marginTop: 8 },
-
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, gap: 8 },
-  statLabel: { fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  statValue: { fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 2 },
+  sectionLabel: {
+    fontWeight: '900',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  shiftRow: { flexDirection: 'row' },
+  shiftLabel: { fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
+  shiftValue: { fontWeight: '900', color: colors.text, marginTop: 4 },
+  body: { color: colors.text, lineHeight: 20, marginTop: 4 },
+  warnText: { color: colors.muted, fontWeight: '700' },
+  statRow: { flexDirection: 'row' },
+  statLabel: { fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
+  statValue: { fontWeight: '900', color: colors.text, marginTop: 2 },
   statValueAccent: { color: colors.success },
 });

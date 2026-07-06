@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -9,8 +10,11 @@ import {
   getQuickPrompts,
   listConversations,
   sendMessage,
+  streamMessage,
+  StreamChatError,
   type AIConversation,
   type AIConversationSummary,
+  type AIChatResponse,
   type QuickPrompt,
 } from '@/api/endpoints/ai';
 
@@ -95,4 +99,53 @@ export function useMcpStatus() {
     queryFn: getMcpStatus,
     refetchInterval: 30_000,
   });
+}
+
+export function useSendMessageStream() {
+  const qc = useQueryClient();
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<{ message: string; retryAfter: number | null } | null>(null);
+
+  const stream = useCallback(
+    async (
+      input: { conversationId?: string; message: string },
+      hooks: {
+        onToken: (content: string) => void;
+        onMeta?: (conversationId: string) => void;
+        onDone?: (data: AIChatResponse) => void;
+        onToolCall?: (tool: string) => void;
+        onToolResult?: (tool: string) => void;
+      },
+    ): Promise<AIChatResponse> => {
+      setIsStreaming(true);
+      setStreamError(null);
+      try {
+        const response = await streamMessage(input, {
+          onToken: ({ content }) => hooks.onToken(content),
+          onMeta: ({ conversationId }) => hooks.onMeta?.(conversationId),
+          onToolCall: ({ tool }) => hooks.onToolCall?.(tool),
+          onToolResult: ({ tool }) => hooks.onToolResult?.(tool),
+          onRetryAfter: (seconds) => setStreamError({ message: 'Rate limited', retryAfter: seconds }),
+          onDone: (data) => {
+            hooks.onDone?.(data);
+            qc.invalidateQueries({ queryKey: aiKeys.conversations() });
+            qc.invalidateQueries({ queryKey: aiKeys.conversation(data.conversationId) });
+          },
+        });
+        return response;
+      } catch (err) {
+        if (err instanceof StreamChatError) {
+          setStreamError({ message: err.message, retryAfter: err.retryAfter });
+        } else {
+          setStreamError({ message: (err as Error).message ?? 'Assistant error', retryAfter: null });
+        }
+        throw err;
+      } finally {
+        setIsStreaming(false);
+      }
+    },
+    [qc],
+  );
+
+  return { stream, isStreaming, streamError, clearError: () => setStreamError(null) };
 }

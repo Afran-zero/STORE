@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -85,6 +85,35 @@ async def store_summary(
         store_id=store_id,
         start_date=start,
         end_date=end,
+    )
+    return success_payload(payload)
+
+
+@router.get("/store/{store_id}/ingredients")
+async def store_ingredients(
+    store_id: str,
+    start: Annotated[Optional[str], Query()] = None,
+    end: Annotated[Optional[str], Query()] = None,
+    status: Annotated[Optional[str], Query()] = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: AllocationService = Depends(_service),
+):
+    """Per-ingredient allocated quantities for a store.
+
+    Aggregates ``deductions[].required`` across the matching allocations so the
+    worker UI can show the *allocated* amount per ingredient (e.g. "10 buns
+    allocated today") rather than the cumulative shelf stock from
+    ``store_inventory``.
+    """
+    statuses: Optional[List[str]] = None
+    if status:
+        statuses = [s.strip().upper() for s in status.split(",") if s.strip()]
+    payload = await service.aggregated_by_ingredient(
+        business_id=current_user.businessId or "",
+        store_id=store_id,
+        start_date=start,
+        end_date=end,
+        statuses=statuses,
     )
     return success_payload(payload)
 

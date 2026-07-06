@@ -17,29 +17,57 @@ class StoreInventoryService:
         # Enrich each row with the matching ingredient's name/unit so workers see
         # "Burger Bun (Normal)" instead of the raw id when the store_inventory row
         # was created without a snapshot of those fields.
-        missing: set[str] = set()
+        #
+        # The store_inventory.ingredientId may be stored either as a plain string
+        # or as a real ObjectId (depending on which code path inserted it), so
+        # we resolve both shapes against the ingredients collection.
+        from bson import ObjectId
+
+        missing_strs: set[str] = set()
+        missing_oids: set[ObjectId] = set()
         for row in rows:
-            if not row.get("ingredientName") and row.get("ingredientId"):
-                missing.add(str(row["ingredientId"]))
+            if row.get("ingredientName") or not row.get("ingredientId"):
+                continue
+            raw = row["ingredientId"]
+            key = str(raw)
+            missing_strs.add(key)
+            try:
+                missing_oids.add(ObjectId(raw))
+            except Exception:
+                pass
+
         name_map: dict[str, Dict[str, Any]] = {}
-        unit_map: dict[str, str | None] = {}
-        if missing:
+        if missing_strs or missing_oids:
+            or_clauses: list[dict] = []
+            if missing_strs:
+                or_clauses.append({"_id": {"$in": list(missing_strs)}})
+            if missing_oids:
+                or_clauses.append({"_id": {"$in": list(missing_oids)}})
+            # MongoDB needs a top-level key per $or branch — use $or.
             cursor = self.ingredients.collection.find(
-                {"businessId": business_id, "_id": {"$in": list(missing)}}
+                {"businessId": business_id, "$or": or_clauses}
             )
             async for ing in cursor:
-                ing_id = str(ing.get("_id"))
-                name_map[ing_id] = ing
-                unit_map[ing_id] = ing.get("unit")
+                name_map[str(ing.get("_id"))] = ing
+
         for row in rows:
             ing_id = row.get("ingredientId")
             if not ing_id:
                 continue
             ing = name_map.get(str(ing_id))
-            if ing and not row.get("ingredientName"):
-                row["ingredientName"] = ing.get("name")
-            if ing and not row.get("unit"):
-                row["unit"] = ing.get("unit")
+            if ing:
+                if not row.get("ingredientName"):
+                    row["ingredientName"] = ing.get("name")
+                if not row.get("unit"):
+                    row["unit"] = ing.get("unit")
+                # Always include the resolved ingredient block so clients
+                # don't have to join separately.
+                row["ingredient"] = {
+                    "id": str(ing.get("_id")),
+                    "name": ing.get("name"),
+                    "unit": ing.get("unit"),
+                    "category": ing.get("category"),
+                }
         return rows
 
     async def get(self, *, business_id: str, store_id: str, ingredient_id: str) -> Dict[str, Any]:
@@ -52,22 +80,12 @@ class StoreInventoryService:
         """Return rows below their minimum, enriched with embedded ingredient data
         so callers don't need to join separately (fixes dashboards showing IDs).
         """
-        rows = await self.repo.list_by_store(business_id=business_id, store_id=store_id)
+        rows = await self.list_for_store(business_id=business_id, store_id=store_id)
         flagged: List[Dict[str, Any]] = []
         for row in rows:
             quantity = float(row.get("quantity") or 0)
             minimum = float(row.get("minimumStock") or 0)
             if minimum > 0 and quantity <= minimum:
-                ingredient_id = row.get("ingredientId")
-                if ingredient_id:
-                    ing = await self.ingredients.get(business_id=business_id, ingredient_id=ingredient_id)
-                    if ing:
-                        row["ingredient"] = {
-                            "id": ing.get("id") or str(ingredient_id),
-                            "name": ing.get("name"),
-                            "unit": ing.get("unit"),
-                            "category": ing.get("category"),
-                        }
                 flagged.append(row)
         return flagged
 

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Text, View, StyleSheet, TextInput, FlatList, Modal, Pressable } from 'react-native';
+import { Text, View, StyleSheet, TextInput, FlatList, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
@@ -15,6 +15,7 @@ import {
 } from '@/api/endpoints/tickets';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { scaleValue } from '@/lib/responsive';
 
 type Priority = CreateTicketRequest['priority'];
 
@@ -110,16 +111,26 @@ export function TicketsScreen(): JSX.Element {
 }
 
 function TicketRow({ ticket }: { ticket: Ticket }): JSX.Element {
+  const { width } = useWindowDimensions();
+  const s = (n: number) => scaleValue(n, width);
   return (
     <Card>
-      <View style={styles.rowHeader}>
-        <Text style={styles.rowTitle}>{ticket.title}</Text>
+      <View style={[styles.rowHeader, { gap: 10 }]}>
+        <Text style={[styles.rowTitle, { fontSize: s(15) }]} numberOfLines={2}>
+          {ticket.title}
+        </Text>
         <StatusChip label={ticket.priority ?? 'NORMAL'} tone={toneForPriority(ticket.priority)} />
       </View>
-      {ticket.description ? <Text style={styles.body}>{ticket.description}</Text> : null}
-      <View style={styles.rowFooter}>
+      {ticket.description ? (
+        <Text style={[styles.body, { fontSize: s(12) }]} numberOfLines={4}>
+          {ticket.description}
+        </Text>
+      ) : null}
+      <View style={[styles.rowFooter, { flexWrap: 'wrap', gap: 6, marginTop: 6 }]}>
         <StatusChip label={ticket.status ?? 'OPEN'} tone={toneFor(ticket.status)} />
-        <Text style={styles.metaText}>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : ''}</Text>
+        <Text style={[styles.metaText, { fontSize: s(11) }]} numberOfLines={1}>
+          {ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : ''}
+        </Text>
       </View>
     </Card>
   );
@@ -133,6 +144,14 @@ interface ComposerProps {
 }
 
 function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: ComposerProps): JSX.Element {
+  const { width } = useWindowDimensions();
+  const s = (n: number) => scaleValue(n, width);
+  const sheetPad = s(16);
+  const chipPadV = s(8);
+  const chipPadH = s(10);
+  const chipSize = s(11);
+  const titleSize = s(20);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('NORMAL');
@@ -165,40 +184,90 @@ function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: Compo
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Submit ticket</Text>
-          <Text style={styles.sheetSubtitle}>Admin will see this and respond.</Text>
+        <View
+          style={[
+            styles.sheet,
+            {
+              padding: sheetPad,
+              paddingBottom: sheetPad + s(12),
+              borderTopLeftRadius: s(24),
+              borderTopRightRadius: s(24),
+              borderTopWidth: 3,
+              gap: s(10),
+            },
+          ]}
+        >
+          <Text style={[styles.sheetTitle, { fontSize: titleSize }]} numberOfLines={2}>
+            Submit ticket
+          </Text>
+          <Text style={[styles.sheetSubtitle, { fontSize: s(12) }]} numberOfLines={2}>
+            Admin will see this and respond.
+          </Text>
 
-          <Text style={styles.label}>Title</Text>
+          <Text style={[styles.label, { fontSize: s(11) }]}>Title</Text>
           <TextInput
             value={title}
             onChangeText={setTitle}
             placeholder="e.g. Freezer door won't close"
             placeholderTextColor={colors.muted}
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                borderRadius: s(14),
+                paddingHorizontal: s(14),
+                paddingVertical: s(12),
+                fontSize: s(14),
+              },
+            ]}
           />
 
-          <Text style={styles.label}>Description</Text>
+          <Text style={[styles.label, { fontSize: s(11) }]}>Description</Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
             placeholder="Add details that help admin act on this…"
             placeholderTextColor={colors.muted}
             multiline
-            style={[styles.input, styles.textarea]}
+            style={[
+              styles.input,
+              styles.textarea,
+              {
+                borderRadius: s(14),
+                paddingHorizontal: s(14),
+                paddingVertical: s(12),
+                fontSize: s(14),
+                minHeight: s(90),
+              },
+            ]}
           />
 
-          <Text style={styles.label}>Priority</Text>
-          <View style={styles.priorityRow}>
+          <Text style={[styles.label, { fontSize: s(11) }]}>Priority</Text>
+          <View style={[styles.priorityRow, { gap: 6 }]}>
             {PRIORITIES.map((p) => {
               const selected = priority === p;
               return (
                 <Pressable
                   key={p}
                   onPress={() => setPriority(p)}
-                  style={[styles.priorityChip, selected ? styles.priorityChipSelected : null]}
+                  style={[
+                    styles.priorityChip,
+                    {
+                      paddingHorizontal: chipPadH,
+                      paddingVertical: chipPadV,
+                      borderRadius: 999,
+                      flexGrow: 1,
+                    },
+                    selected ? styles.priorityChipSelected : null,
+                  ]}
                 >
-                  <Text style={[styles.priorityChipText, selected ? styles.priorityChipTextSelected : null]}>
+                  <Text
+                    style={[
+                      styles.priorityChipText,
+                      { fontSize: chipSize },
+                      selected ? styles.priorityChipTextSelected : null,
+                    ]}
+                    numberOfLines={1}
+                  >
                     {p}
                   </Text>
                 </Pressable>
@@ -211,13 +280,17 @@ function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: Compo
             <Text style={styles.error}>{mutation.error.message}</Text>
           ) : null}
 
-          <View style={styles.sheetActions}>
-            <PrimaryButton label="Cancel" variant="outline" onPress={onClose} />
-            <PrimaryButton
-              label={mutation.isPending ? 'Submitting…' : 'Submit'}
-              onPress={submit}
-              disabled={mutation.isPending}
-            />
+          <View style={[styles.sheetActions, { gap: s(10), marginTop: s(4) }]}>
+            <View style={{ flex: 1 }}>
+              <PrimaryButton label="Cancel" variant="outline" onPress={onClose} />
+            </View>
+            <View style={{ flex: 1.6 }}>
+              <PrimaryButton
+                label={mutation.isPending ? 'Submitting…' : 'Submit'}
+                onPress={submit}
+                disabled={mutation.isPending}
+              />
+            </View>
           </View>
         </View>
       </View>
@@ -228,50 +301,39 @@ function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: Compo
 const styles = StyleSheet.create({
   loading: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   title: { fontSize: 16, fontWeight: '800', color: colors.text },
-  body: { fontSize: 13, color: colors.text, lineHeight: 20 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  rowTitle: { fontSize: 15, fontWeight: '800', color: colors.text, flex: 1 },
+  body: { color: colors.text, lineHeight: 20 },
+  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rowTitle: { fontWeight: '800', color: colors.text, flex: 1 },
   rowFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  metaText: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+  metaText: { color: colors.muted, fontWeight: '600' },
 
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.background,
-    padding: 18,
-    paddingBottom: 28,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    gap: 10,
-    borderTopWidth: 3,
     borderColor: colors.borderStrong,
   },
-  sheetTitle: { fontSize: 22, fontWeight: '900', color: colors.text },
-  sheetSubtitle: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  label: { fontSize: 12, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
+  sheetTitle: { fontWeight: '900', color: colors.text },
+  sheetSubtitle: { color: colors.muted, fontWeight: '600' },
+  sheetActions: { flexDirection: 'row' },
+  label: { fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
   input: {
     borderWidth: 2,
     borderColor: colors.border,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
     backgroundColor: colors.background,
     color: colors.text,
-    fontSize: 15,
     fontWeight: '600',
   },
-  textarea: { minHeight: 90, textAlignVertical: 'top' },
-  priorityRow: { flexDirection: 'row', gap: 8 },
+  textarea: { textAlignVertical: 'top' },
+  priorityRow: { flexDirection: 'row' },
   priorityChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   priorityChipSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  priorityChipText: { fontSize: 12, fontWeight: '800', color: colors.muted },
+  priorityChipText: { fontWeight: '800', color: colors.muted },
   priorityChipTextSelected: { color: colors.accentText },
   error: { color: colors.danger, fontSize: 13, fontWeight: '700' },
 });

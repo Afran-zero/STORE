@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, status
 from fastapi import Query
 
+from app.core.exceptions import NotFoundError
 from app.core.response import success_payload
 from app.dependencies.auth import CurrentUser, get_current_user
 from app.schemas.store import StoreCreateRequest, StoreOpenCloseRequest, StoreStatusUpdateRequest, StoreUpdateRequest
@@ -90,3 +91,20 @@ async def close_store(store_id: str, _: StoreOpenCloseRequest, current_user: Cur
 @router.get("/{store_id}/daily-report")
 async def daily_report(store_id: str, date: str | None = None):
     return success_payload({"storeId": store_id, "date": date}, message="Daily report scaffold")
+
+
+@router.delete("/{store_id}", status_code=status.HTTP_200_OK)
+async def delete_store(store_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """Permanently delete a store and cascade to its scoped collections.
+
+    Cascades to `store_inventory`, `sales`, `attendance_records`, and
+    `daily_assignments` so the `storeId` no longer appears anywhere. Returns
+    `{ deleted: true }` on success; raises 404 if the store does not exist.
+    """
+    deleted = await service.delete_store(
+        business_id=current_user.businessId or "",
+        store_id=store_id,
+    )
+    if not deleted:
+        raise NotFoundError(code="STORE_NOT_FOUND", message="Store not found")
+    return success_payload({"deleted": True, "storeId": store_id}, message="Store deleted")

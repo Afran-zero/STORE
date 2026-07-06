@@ -28,17 +28,21 @@ import {
   useMcpStatus,
   useQuickPrompts,
   useSendMessage,
+  useSendMessageStream,
 } from '@/features/ai-assistant/hooks/use-ai';
 import { mcpAggregate, mcpCount, mcpFind } from '@/api/endpoints/ai';
 import type { AIConversationSummary, AIMessage } from '@/api/endpoints/ai';
 
 type Tab = 'chat' | 'mcp';
 
+const AI_STREAMING_ENABLED = import.meta.env.VITE_AI_STREAMING === 'true';
+
 export function AiAssistantPage(): JSX.Element {
   const [tab, setTab] = useState<Tab>('chat');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [liveMessage, setLiveMessage] = useState<{ id: string; content: string; tools: string[] } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -47,6 +51,7 @@ export function AiAssistantPage(): JSX.Element {
   const quickPromptsQuery = useQuickPrompts();
   const createConversation = useCreateConversation();
   const sendMutation = useSendMessage();
+  const { stream, isStreaming, streamError, clearError } = useSendMessageStream();
   const deleteMutation = useDeleteConversation();
 
   const conversationItems = conversationsQuery.data?.items ?? [];
@@ -58,6 +63,14 @@ export function AiAssistantPage(): JSX.Element {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, conversationQuery.isFetching]);
+
+  useEffect(() => {
+    if (streamError?.retryAfter != null) {
+      const handle = window.setTimeout(() => clearError(), (streamError.retryAfter + 1) * 1000);
+      return () => window.clearTimeout(handle);
+    }
+    return undefined;
+  }, [streamError?.retryAfter, clearError]);
 
   function startNewConversation(): void {
     setActiveConversationId(null);
@@ -76,6 +89,43 @@ export function AiAssistantPage(): JSX.Element {
     if (!message) return;
     setError(null);
     setDraft('');
+    setLiveMessage(null);
+
+    if (AI_STREAMING_ENABLED) {
+      const tools: string[] = [];
+      let buffered = '';
+      const liveId = `live-${Date.now()}`;
+      setLiveMessage({ id: liveId, content: '', tools });
+      try {
+        const response = await stream(
+          { conversationId: activeConversationId ?? undefined, message },
+          {
+            onMeta: (conversationId) => setActiveConversationId(conversationId),
+            onToolCall: (tool) => tools.push(tool),
+            onToolResult: (tool) => tools.push(tool),
+            onToken: (content) => {
+              buffered += content;
+              setLiveMessage({ id: liveId, content: buffered, tools: [...tools] });
+            },
+            onDone: (data) => {
+              setLiveMessage(null);
+              setActiveConversationId(data.conversationId);
+            },
+          },
+        );
+        setActiveConversationId(response.conversationId);
+      } catch (err) {
+        const friendly =
+          err instanceof ApiException
+            ? err.message
+            : (err as Error)?.message ?? 'Failed to reach the assistant';
+        setError(friendly);
+        setLiveMessage(null);
+        setDraft(message);
+      }
+      return;
+    }
+
     try {
       const response = await sendMutation.mutateAsync({
         conversationId: activeConversationId ?? undefined,
@@ -100,7 +150,8 @@ export function AiAssistantPage(): JSX.Element {
     }
   }
 
-  const isSending = sendMutation.isPending;
+  const isSending = sendMutation.isPending || isStreaming;
+  const retryAfterSeconds = streamError?.retryAfter ?? null;
   const titleForActive =
     activeConversationId == null
       ? 'New conversation'
@@ -192,6 +243,9 @@ export function AiAssistantPage(): JSX.Element {
             onQuickPrompt={(text) => void handleSend(text)}
             inputRef={inputRef}
             messagesEndRef={messagesEndRef}
+            liveMessage={liveMessage}
+            retryAfterSeconds={retryAfterSeconds}
+            onDismissRetryAfter={() => clearError()}
           />
         ) : (
           <DataToolsPanel />
@@ -240,6 +294,9 @@ function ChatPanel({
   onQuickPrompt,
   inputRef,
   messagesEndRef,
+  liveMessage,
+  retryAfterSeconds,
+  onDismissRetryAfter,
 }: {
   title: string;
   messages: AIMessage[];
@@ -253,6 +310,9 @@ function ChatPanel({
   onQuickPrompt: (prompt: string) => void;
   inputRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   messagesEndRef: React.MutableRefObject<HTMLDivElement | null>;
+  liveMessage: { id: string; content: string; tools: string[] } | null;
+  retryAfterSeconds: number | null;
+  onDismissRetryAfter: () => void;
 }): JSX.Element {
   return (
     <>
@@ -277,10 +337,34 @@ function ChatPanel({
           </div>
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
+            {retryAfterSeconds != null ? (
+              <div className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+                <span>
+                  You are sending messages too quickly. Try again in {retryAfterSeconds}s.
+                </span>
+                <Button
+                  variant="ghost"
+                  className="px-3 py-1 text-xs"
+                  onClick={onDismissRetryAfter}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            ) : null}
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
-            {isSending ? (
+            {liveMessage ? (
+              <MessageBubble
+                key={liveMessage.id}
+                message={{
+                  id: liveMessage.id,
+                  role: 'assistant',
+                  content: liveMessage.content,
+                  toolCalls: liveMessage.tools.map((tool) => ({ tool })),
+                }}
+              />
+            ) : isSending ? (
               <div className="flex items-center gap-2 text-sm text-zinc-500">
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                 Assistant is thinking…

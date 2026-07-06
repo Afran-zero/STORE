@@ -10,8 +10,7 @@ import {
   type Ingredient,
   type UpdateIngredientRequest,
 } from '@/api/endpoints/ingredients';
-import { adjustStock } from '@/api/endpoints/inventory';
-import { analyticsKeys, inventoryKeys, storeInventoryKeys } from '@/api/queryKeys';
+import { inventoryKeys } from '@/api/queryKeys';
 
 export function useIngredients(params: { category?: string; lowStock?: boolean } = {}) {
   return useQuery({
@@ -97,45 +96,6 @@ export function useDeleteIngredient() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory', 'ingredients'] });
       qc.invalidateQueries({ queryKey: inventoryKeys.lowStock() });
-    },
-  });
-}
-
-export function useAdjustStock() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: {
-      ingredientId: string;
-      quantity: number;
-      reason: string;
-      storeId?: string | null;
-    }) => adjustStock(input),
-    onSuccess: (result, variables) => {
-      // Patch every cached list so the stock column updates instantly
-      const updated = result.ingredient;
-      qc.setQueriesData<Ingredient[] | undefined>(
-        { queryKey: ['inventory', 'ingredients'] },
-        (prev) =>
-          prev
-            ? prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row))
-            : prev,
-      );
-      qc.invalidateQueries({ queryKey: ['inventory', 'ingredients'] });
-      qc.setQueryData(inventoryKeys.detail(updated.id), updated);
-      qc.invalidateQueries({ queryKey: inventoryKeys.lowStock() });
-
-      // Refresh per-store views so the StoreDetailSheet and low-stock toasts
-      // reflect the new pool. Restock is a master-pool write today, so we
-      // best-effort invalidate every cached store-inventory list + the
-      // analytics store-summary view for the targeted store (if any).
-      if (variables.storeId) {
-        qc.invalidateQueries({ queryKey: storeInventoryKeys.list(variables.storeId) });
-        qc.invalidateQueries({ queryKey: storeInventoryKeys.lowStock(variables.storeId) });
-        qc.invalidateQueries({ queryKey: analyticsKeys.storeSummary(variables.storeId) });
-      } else {
-        qc.invalidateQueries({ queryKey: ['store-inventory'] });
-        qc.invalidateQueries({ queryKey: ['analytics', 'store-summary'] });
-      }
     },
   });
 }

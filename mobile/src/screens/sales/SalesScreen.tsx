@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Text, View, StyleSheet, Modal, Pressable, TextInput, FlatList } from 'react-native';
+import { Text, View, StyleSheet, Modal, Pressable, TextInput, FlatList, useWindowDimensions, ScrollView } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
@@ -17,6 +17,7 @@ import {
 import { listFood, type FoodItem } from '@/api/endpoints/food';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { scaleValue, useSizeClass } from '@/lib/responsive';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -81,13 +82,11 @@ export function SalesScreen(): JSX.Element {
           </Text>
         </Card>
       ) : (
-        <FlatList
-          scrollEnabled={false}
-          data={todays}
-          keyExtractor={(item) => item.id}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item }) => <SaleRow sale={item} />}
-        />
+        <View style={{ gap: 10 }}>
+          {todays.map((s) => (
+            <SaleRow key={s.id} sale={s} />
+          ))}
+        </View>
       )}
 
       <SaleComposer
@@ -105,16 +104,31 @@ export function SalesScreen(): JSX.Element {
 }
 
 function SaleRow({ sale }: { sale: Sale }): JSX.Element {
+  const { width } = useWindowDimensions();
+  const s = (n: number) => scaleValue(n, width);
   const profit = Number(sale.profit ?? 0);
   return (
     <Card>
-      <View style={styles.rowHeader}>
-        <Text style={styles.rowTitle}>{sale.foodName}</Text>
-        <Text style={styles.rowPrice}>${Number(sale.totalPrice ?? 0).toFixed(2)}</Text>
+      <View style={[styles.rowHeader, { gap: 10 }]}>
+        <Text style={[styles.rowTitle, { fontSize: s(14) }]} numberOfLines={2}>
+          {sale.foodName}
+        </Text>
+        <Text style={[styles.rowPrice, { fontSize: s(15) }]} numberOfLines={1}>
+          ${Number(sale.totalPrice ?? 0).toFixed(2)}
+        </Text>
       </View>
-      <View style={styles.rowMeta}>
-        <Text style={styles.metaText}>×{sale.quantity} · {sale.channel} · {fmtTime(sale.createdAt)}</Text>
-        <StatusChip label={profit >= 0 ? `+$${profit.toFixed(2)} profit` : `-$${Math.abs(profit).toFixed(2)}`} tone={profit >= 0 ? 'green' : 'red'} />
+      <View style={[styles.rowMeta, { gap: 8, flexWrap: 'wrap', marginTop: 4 }]}>
+        <Text style={[styles.metaText, { fontSize: s(11) }]} numberOfLines={1}>
+          ×{sale.quantity} · {sale.channel} · {fmtTime(sale.createdAt)}
+        </Text>
+        <StatusChip
+          label={
+            profit >= 0
+              ? `+$${profit.toFixed(2)} profit`
+              : `-$${Math.abs(profit).toFixed(2)}`
+          }
+          tone={profit >= 0 ? 'green' : 'red'}
+        />
       </View>
     </Card>
   );
@@ -128,6 +142,14 @@ interface SaleComposerProps {
 }
 
 function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerProps): JSX.Element {
+  const { width, isCompact, isTablet } = useSizeClass();
+  const s = (n: number) => scaleValue(n, width);
+  const sheetPad = s(16);
+  const sheetBottom = s(28);
+  const sheetRadius = s(24);
+  const sheetGap = s(12);
+  const sheetTitleSize = s(20);
+
   const foodQuery = useQuery({
     queryKey: ['food', 'all'],
     queryFn: listFood,
@@ -165,46 +187,95 @@ function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerPr
     });
   }
 
+  const foodColumns = isCompact ? 1 : isTablet ? 3 : 2;
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>New sale</Text>
-          <Text style={styles.sheetSubtitle}>Pick the food, set quantity, submit.</Text>
+        <View
+          style={[
+            styles.sheet,
+            {
+              padding: sheetPad,
+              paddingBottom: sheetBottom,
+              borderTopLeftRadius: sheetRadius,
+              borderTopRightRadius: sheetRadius,
+              borderTopWidth: 3,
+              gap: sheetGap,
+              maxHeight: '92%',
+            },
+          ]}
+        >
+          <Text style={[styles.sheetTitle, { fontSize: sheetTitleSize }]} numberOfLines={2}>
+            New sale
+          </Text>
+          <Text style={[styles.sheetSubtitle, { fontSize: s(12) }]} numberOfLines={2}>
+            Pick the food, set quantity, submit.
+          </Text>
 
           {foodQuery.isLoading ? (
-            <Text style={styles.loading}>Loading menu…</Text>
+            <Text style={[styles.loading, { fontSize: s(12) }]}>Loading menu…</Text>
           ) : (
-            <FlatList
-              data={items}
-              keyExtractor={(f) => f.id}
-              numColumns={2}
-              columnWrapperStyle={{ gap: 10 }}
-              contentContainerStyle={{ gap: 10 }}
-              style={{ maxHeight: 280 }}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => setSelected(item)}
-                  style={[
-                    styles.foodCard,
-                    selected?.id === item.id ? styles.foodCardSelected : null,
-                  ]}
-                >
-                  <Text style={styles.foodName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.foodPrice}>${Number(item.price ?? 0).toFixed(2)}</Text>
-                </Pressable>
-              )}
-            />
+            <ScrollView
+              style={{ maxHeight: s(280) }}
+              contentContainerStyle={{ gap: s(8) }}
+              showsVerticalScrollIndicator={false}
+            >
+              {chunkFood(items, foodColumns).map((row, rowIdx) => (
+                <View key={rowIdx} style={{ flexDirection: 'row', gap: s(8) }}>
+                  {row.map((item) => {
+                    const isSelected = selected?.id === item.id;
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => setSelected(item)}
+                        style={[
+                          styles.foodCard,
+                          {
+                            padding: s(12),
+                            borderRadius: s(14),
+                            flex: 1,
+                            gap: 2,
+                          },
+                          isSelected ? styles.foodCardSelected : null,
+                        ]}
+                      >
+                        <Text
+                          style={[styles.foodName, { fontSize: s(13) }]}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text
+                          style={[styles.foodPrice, { fontSize: s(13) }]}
+                          numberOfLines={1}
+                        >
+                          ${Number(item.price ?? 0).toFixed(2)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  {row.length < foodColumns
+                    ? Array.from({ length: foodColumns - row.length }).map((_, i) => (
+                        <View key={`pad-${i}`} style={{ flex: 1 }} />
+                      ))
+                    : null}
+                </View>
+              ))}
+            </ScrollView>
           )}
 
-          <View style={styles.qtyRow}>
-            <Text style={styles.qtyLabel}>Quantity</Text>
-            <View style={styles.qtyControls}>
+          <View style={[styles.qtyRow, { marginTop: s(4) }]}>
+            <Text style={[styles.qtyLabel, { fontSize: s(11) }]}>Quantity</Text>
+            <View style={[styles.qtyControls, { gap: s(8) }]}>
               <Pressable
-                style={styles.qtyBtn}
+                style={[
+                  styles.qtyBtn,
+                  { width: s(40), height: s(40), borderRadius: s(12) },
+                ]}
                 onPress={() => setQuantity((q) => Math.max(1, q - 1))}
               >
-                <Text style={styles.qtyBtnText}>−</Text>
+                <Text style={[styles.qtyBtnText, { fontSize: s(18) }]}>−</Text>
               </Pressable>
               <TextInput
                 value={String(quantity)}
@@ -213,19 +284,30 @@ function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerPr
                   setQuantity(Math.max(1, n));
                 }}
                 keyboardType="number-pad"
-                style={styles.qtyInput}
+                style={[
+                  styles.qtyInput,
+                  {
+                    minWidth: s(56),
+                    fontSize: s(16),
+                    borderRadius: s(10),
+                    paddingVertical: s(4),
+                  },
+                ]}
               />
               <Pressable
-                style={styles.qtyBtn}
+                style={[
+                  styles.qtyBtn,
+                  { width: s(40), height: s(40), borderRadius: s(12) },
+                ]}
                 onPress={() => setQuantity((q) => q + 1)}
               >
-                <Text style={styles.qtyBtnText}>+</Text>
+                <Text style={[styles.qtyBtnText, { fontSize: s(18) }]}>+</Text>
               </Pressable>
             </View>
           </View>
 
           {selected ? (
-            <Text style={styles.totalLine}>
+            <Text style={[styles.totalLine, { fontSize: s(13) }]} numberOfLines={2}>
               {quantity} × {selected.name} = ${(quantity * Number(selected.price ?? 0)).toFixed(2)}
             </Text>
           ) : null}
@@ -235,13 +317,17 @@ function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerPr
             <Text style={styles.error}>{mutation.error.message}</Text>
           ) : null}
 
-          <View style={styles.sheetActions}>
-            <PrimaryButton label="Cancel" variant="outline" onPress={onClose} />
-            <PrimaryButton
-              label={mutation.isPending ? 'Submitting…' : 'Record sale'}
-              onPress={submit}
-              disabled={mutation.isPending || !selected}
-            />
+          <View style={[styles.sheetActions, { gap: s(10), marginTop: s(4) }]}>
+            <View style={{ flex: 1 }}>
+              <PrimaryButton label="Cancel" variant="outline" onPress={onClose} />
+            </View>
+            <View style={{ flex: 1.8 }}>
+              <PrimaryButton
+                label={mutation.isPending ? 'Submitting…' : 'Record sale'}
+                onPress={submit}
+                disabled={mutation.isPending || !selected}
+              />
+            </View>
           </View>
         </View>
       </View>
@@ -249,69 +335,64 @@ function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerPr
   );
 }
 
-const styles = StyleSheet.create({
-  loading: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  title: { fontSize: 16, fontWeight: '800', color: colors.text },
-  body: { fontSize: 13, color: colors.muted, lineHeight: 20 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  rowTitle: { fontSize: 15, fontWeight: '800', color: colors.text, flex: 1 },
-  rowPrice: { fontSize: 16, fontWeight: '900', color: colors.text },
-  rowMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  metaText: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+/**
+ * Split an array into fixed-size rows so we render a variable number of
+ * columns in the food picker without using FlatList (which complicates the
+ * multi-column-with-padded-trailing-cell layout).
+ */
+function chunkFood<T>(items: T[], cols: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += cols) {
+    rows.push(items.slice(i, i + cols));
+  }
+  return rows;
+}
 
-  // Sheet
+const styles = StyleSheet.create({
+  loading: { color: colors.muted, fontWeight: '600' },
+  title: { fontSize: 16, fontWeight: '800', color: colors.text },
+  body: { color: colors.muted, lineHeight: 20 },
+  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rowTitle: { fontWeight: '800', color: colors.text, flex: 1 },
+  rowPrice: { fontWeight: '900', color: colors.text },
+  rowMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  metaText: { color: colors.muted, fontWeight: '600' },
+
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.background,
-    padding: 18,
-    paddingBottom: 28,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    gap: 12,
-    borderTopWidth: 3,
     borderColor: colors.borderStrong,
   },
-  sheetTitle: { fontSize: 22, fontWeight: '900', color: colors.text },
-  sheetSubtitle: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  sheetTitle: { fontWeight: '900', color: colors.text },
+  sheetSubtitle: { color: colors.muted, fontWeight: '600' },
+  sheetActions: { flexDirection: 'row' },
   foodCard: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 18,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    gap: 4,
   },
   foodCardSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  foodName: { fontSize: 14, fontWeight: '800', color: colors.text },
-  foodPrice: { fontSize: 14, fontWeight: '900', color: colors.text },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  qtyLabel: { fontSize: 13, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  qtyControls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  foodName: { fontWeight: '800', color: colors.text },
+  foodPrice: { fontWeight: '900', color: colors.text },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  qtyLabel: { fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  qtyControls: { flexDirection: 'row', alignItems: 'center' },
   qtyBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
     borderWidth: 2,
     borderColor: colors.borderStrong,
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyBtnText: { fontSize: 22, fontWeight: '900', color: colors.text },
+  qtyBtnText: { fontWeight: '900', color: colors.text },
   qtyInput: {
-    minWidth: 60,
     textAlign: 'center',
-    fontSize: 18,
     fontWeight: '900',
     color: colors.text,
     borderWidth: 2,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 6,
     backgroundColor: colors.background,
   },
-  totalLine: { fontSize: 14, color: colors.text, fontWeight: '800' },
+  totalLine: { color: colors.text, fontWeight: '800' },
   error: { color: colors.danger, fontSize: 13, fontWeight: '700' },
 });

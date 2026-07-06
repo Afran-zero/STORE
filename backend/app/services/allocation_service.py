@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from bson import ObjectId
+from bson.errors import InvalidId
+
 from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.food_repository import FoodRepository
 from app.repositories.ingredient_repository import IngredientRepository
@@ -56,7 +59,25 @@ class AllocationService:
         if not food:
             raise AllocationError(f"Food item {food_id} not found")
 
+        # Preferred path: recipe is reverse-linked to this food item via recipe.foodItemId.
         recipe = await self.recipes.get_active_for_food(business_id=business_id, food_id=food_id)
+        # Fallback: when the recipe form did not set foodItemId (older data / manual
+        # creation), trust the food.recipeId pointer and look the recipe up directly.
+        # Also auto-heal by writing the back-link so future lookups stay consistent.
+        if not recipe:
+            fallback_recipe_id = food.get("recipeId")
+            if fallback_recipe_id:
+                recipe = await self.recipes.get(business_id=business_id, recipe_id=fallback_recipe_id)
+                if recipe:
+                    try:
+                        from bson import ObjectId as _ObjectId
+                        await self.recipes.collection.update_one(
+                            {"_id": _ObjectId(fallback_recipe_id), "businessId": business_id},
+                            {"$set": {"foodItemId": food_id, "updatedAt": datetime.now(timezone.utc)}},
+                        )
+                    except Exception:
+                        # Back-link repair is best-effort; allocation still proceeds.
+                        pass
         if not recipe:
             raise AllocationError("No active recipe linked to this food item. Edit the recipe and pick a food item first.")
 
@@ -254,8 +275,11 @@ class AllocationService:
             # Recompute deductions (snapshot before/after for the delta)
             # Note: keeping original deductions for audit; updates capture the delta in 'notes'.
             updates["quantity"] = float(new_quantity)
-            unit_price = float(existing.get("unitPrice") or 0)
-            updates["totalCost"] = round(unit_price * float(new_quantity), 4)
+            # `unitCost` is per-unit ingredient cost (set on creation).
+            # `unitPrice` is per-unit selling price (revenue basis).
+            # `totalCost` is the *ingredient* cost of the whole allocation, not revenue.
+            unit_cost = float(existing.get("unitCost") or 0)
+            updates["totalCost"] = round(unit_cost * float(new_quantity), 4)
 
         updated = await self.allocations.update(
             business_id=business_id,
@@ -527,6 +551,134 @@ class AllocationService:
             entry["totalCost"] = float(row.get("totalCost") or 0)
             annotated.append(entry)
         return annotated
+
+    async def aggregated_by_ingredient(
+        self,
+        *,
+        business_id: str,
+        store_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        statuses: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Aggregate allocation deductions per ingredient for a store.
+
+        Returns a per-ingredient view of how much was allocated to ``store_id``
+        within the optional date range, filtered to ``statuses`` (default:
+        ACTIVE only). Each row sums ``deductions[].required`` across all
+        matching allocations so the worker screen can display the *allocated*
+        amount for the day rather than the cumulative shelf stock from
+        ``store_inventory``.
+
+        Shape::
+
+            {
+                "storeId": "...",
+                "start": "...",
+                "end": "...",
+                "statuses": ["ACTIVE"],
+                "items": [
+                    {
+                        "ingredientId": "...",
+                        "ingredientName": "Burger Bun (Normal)",
+                        "unit": "pcs",
+                        "allocated": 10.0,           # sum of deductions[].required
+                        "byFood": [                  # breakdown per food item
+                            {"foodItemId": "...", "foodName": "...", "quantity": 10.0}
+                        ]
+                    },
+                    ...
+                ]
+            }
+        """
+        rows = await self.allocations.list(
+            business_id=business_id,
+            store_id=store_id,
+            start_date=start_date,
+            end_date=end_date,
+            status=None,
+            limit=500,
+        )
+        allowed = {s.upper() for s in (statuses or ["ACTIVE"])}
+        per_ingredient: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            row_status = str(row.get("status") or "").upper()
+            if allowed and row_status not in allowed:
+                continue
+            food_id = str(row.get("foodItemId") or "")
+            food_name = row.get("foodName") or "Item"
+            qty = float(row.get("quantity") or 0)
+            for ded in row.get("deductions") or []:
+                ing_id = str(ded.get("ingredientId") or "")
+                if not ing_id:
+                    continue
+                required = float(ded.get("required") or 0)
+                bucket = per_ingredient.setdefault(
+                    ing_id,
+                    {
+                        "ingredientId": ing_id,
+                        "ingredientName": ded.get("ingredientName") or ing_id,
+                        "unit": ded.get("unit"),
+                        "allocated": 0.0,
+                        "byFood": [],
+                    },
+                )
+                if not bucket.get("unit") and ded.get("unit"):
+                    bucket["unit"] = ded.get("unit")
+                bucket["allocated"] += required
+                bucket["byFood"].append(
+                    {
+                        "foodItemId": food_id,
+                        "foodName": food_name,
+                        "quantity": required,
+                    }
+                )
+        # Hydrate unit + canonical name from ingredients collection so the row
+        # is self-describing even when deductions were recorded before the
+        # ingredient was renamed.
+        if per_ingredient:
+            # _id values are ObjectIds; per_ingredient keys are strings.
+            # Convert the keys to ObjectIds so the $in lookup matches.
+            id_filter: List[ObjectId] = []
+            for key in per_ingredient.keys():
+                try:
+                    id_filter.append(ObjectId(key))
+                except (InvalidId, TypeError):
+                    continue
+            if id_filter:
+                try:
+                    cursor = self.ingredients.collection.find(
+                        {
+                            "businessId": business_id,
+                            "_id": {"$in": id_filter},
+                        }
+                    )
+                    async for ing in cursor:
+                        ing_id = str(ing.get("_id"))
+                        bucket = per_ingredient.get(ing_id)
+                        if not bucket:
+                            continue
+                        if not bucket.get("ingredientName") or bucket["ingredientName"] == ing_id:
+                            bucket["ingredientName"] = ing.get("name") or bucket["ingredientName"]
+                        if not bucket.get("unit"):
+                            bucket["unit"] = ing.get("unit")
+                except Exception:
+                    # Non-fatal: aggregation still valid without the lookup
+                    pass
+        items = list(per_ingredient.values())
+        items.sort(
+            key=lambda x: (
+                -float(x.get("allocated") or 0),
+                str(x.get("ingredientName") or ""),
+            )
+        )
+        return {
+            "storeId": store_id,
+            "start": start_date,
+            "end": end_date,
+            "statuses": sorted(allowed),
+            "items": items,
+        }
 
 
 __all__ = ["AllocationService", "AllocationError"]

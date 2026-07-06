@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
 from app.core.response import success_payload
 from app.dependencies.auth import CurrentUser, get_current_user
+from app.dependencies.rate_limit import rate_limit_mcp
 from app.database.client import get_database
 from app.schemas.mcp import McpAggregateRequest, McpCountRequest, McpFindRequest
 from app.services.mcp_service import McpService
@@ -46,7 +49,10 @@ async def mcp_indexes(collection: str, current_user: CurrentUser = Depends(get_c
 
 
 @router.post("/find")
-async def mcp_find(payload: McpFindRequest, current_user: CurrentUser = Depends(get_current_user)):
+async def mcp_find(
+    payload: McpFindRequest,
+    current_user: Annotated[CurrentUser, Depends(rate_limit_mcp)],
+):
     sort_pairs: list[tuple[str, int]] = []
     if payload.sort:
         for entry in payload.sort:
@@ -64,7 +70,10 @@ async def mcp_find(payload: McpFindRequest, current_user: CurrentUser = Depends(
 
 
 @router.post("/count")
-async def mcp_count(payload: McpCountRequest, current_user: CurrentUser = Depends(get_current_user)):
+async def mcp_count(
+    payload: McpCountRequest,
+    current_user: Annotated[CurrentUser, Depends(rate_limit_mcp)],
+):
     total = await _service().count(
         business_id=current_user.businessId or "",
         collection=payload.collection,
@@ -74,7 +83,10 @@ async def mcp_count(payload: McpCountRequest, current_user: CurrentUser = Depend
 
 
 @router.post("/aggregate")
-async def mcp_aggregate(payload: McpAggregateRequest, current_user: CurrentUser = Depends(get_current_user)):
+async def mcp_aggregate(
+    payload: McpAggregateRequest,
+    current_user: Annotated[CurrentUser, Depends(rate_limit_mcp)],
+):
     docs = await _service().aggregate(
         business_id=current_user.businessId or "",
         collection=payload.collection,

@@ -5,7 +5,9 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.config import get_settings
 from app.core.exceptions import ValidationError
+from app.services.cache import cached
 
 
 # Read-only MongoDB access layer used by the AI Assistant page and any external
@@ -105,6 +107,28 @@ def _scrub_filter(value: Any) -> Any:
     return value
 
 
+def _scrub_stage_value(value: Any) -> Any:
+    """Recursively sanitize the *value* of an aggregation stage.
+
+    Unlike ``_scrub_filter`` (which is used for filter documents where unknown
+    ``$``-prefixed keys are dropped), this walks the value tree without
+    touching the top-level stage keys. Unknown ``$`` operators inside
+    expressions (e.g. ``$cond``, ``$dateToString``) are preserved because they
+    are not in ``_UNSAFE_OPERATORS``.
+    """
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, inner in value.items():
+            if key in _UNSAFE_OPERATORS:
+                # Drop unconditionally unsafe operators anywhere they appear.
+                continue
+            cleaned[key] = _scrub_stage_value(inner)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub_stage_value(item) for item in value]
+    return value
+
+
 def _scrub_pipeline(pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not isinstance(pipeline, list):
         raise ValidationError(code="MCP_INVALID_PIPELINE", message="Aggregation pipeline must be an array")
@@ -133,7 +157,7 @@ def _scrub_pipeline(pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     code="MCP_UNKNOWN_STAGE",
                     message=f"Stage '{key}' is not in the allowed stage list",
                 )
-        cleaned.append(_scrub_filter(stage))
+            cleaned.append({key: _scrub_stage_value(value)})
     return cleaned
 
 
@@ -217,14 +241,38 @@ class McpService:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         _validate_collection(collection)
-        limit = max(1, min(int(limit or 50), MAX_LIMIT))
         safe_filter = _scrub_filter(filter or {})
-        safe_filter = {"$and": [safe_filter, {"businessId": business_id}]} if safe_filter else {"businessId": business_id}
-        cursor = self.db[collection].find(safe_filter, projection or None)
-        if sort:
-            cursor = cursor.sort(sort)
-        cursor = cursor.limit(limit)
-        return [doc async for doc in cursor]
+        capped_limit = max(1, min(int(limit or 50), MAX_LIMIT))
+        sort_key = [list(pair) for pair in (sort or [])]
+
+        async def producer() -> list[dict[str, Any]]:
+            effective_filter = (
+                {"$and": [safe_filter, {"businessId": business_id}]}
+                if safe_filter
+                else {"businessId": business_id}
+            )
+            cursor = self.db[collection].find(effective_filter, projection or None)
+            if sort_key:
+                cursor = cursor.sort(sort_key)
+            cursor = cursor.limit(capped_limit)
+            return [doc async for doc in cursor]
+
+        ttl = get_settings().ai_cache_mcp_ttl_seconds
+        result = await cached(
+            scope="mcp",
+            business_id=business_id,
+            params={
+                "op": "find",
+                "collection": collection,
+                "filter": safe_filter,
+                "projection": projection,
+                "sort": sort_key,
+                "limit": capped_limit,
+            },
+            ttl=ttl,
+            producer=producer,
+        )
+        return list(result or [])
 
     async def count(
         self,
@@ -235,8 +283,24 @@ class McpService:
     ) -> int:
         _validate_collection(collection)
         safe_filter = _scrub_filter(filter or {})
-        safe_filter = {"$and": [safe_filter, {"businessId": business_id}]} if safe_filter else {"businessId": business_id}
-        return int(await self.db[collection].count_documents(safe_filter))
+
+        async def producer() -> int:
+            effective_filter = (
+                {"$and": [safe_filter, {"businessId": business_id}]}
+                if safe_filter
+                else {"businessId": business_id}
+            )
+            return int(await self.db[collection].count_documents(effective_filter))
+
+        ttl = get_settings().ai_cache_mcp_ttl_seconds
+        result = await cached(
+            scope="mcp",
+            business_id=business_id,
+            params={"op": "count", "collection": collection, "filter": safe_filter},
+            ttl=ttl,
+            producer=producer,
+        )
+        return int(result or 0)
 
     async def aggregate(
         self,
@@ -247,19 +311,34 @@ class McpService:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         _validate_collection(collection)
-        limit = max(1, min(int(limit or 100), MAX_AGGREGATION_RESULTS))
+        capped_limit = max(1, min(int(limit or 100), MAX_AGGREGATION_RESULTS))
         cleaned = _scrub_pipeline(pipeline)
-        # Force businessId into the first $match. If the caller supplied one,
-        # we $and it; otherwise we add it directly.
-        match_stage = {"$match": {"businessId": business_id}}
-        if cleaned and "$match" in cleaned[0]:
-            existing = cleaned[0]["$match"] or {}
-            existing = {"$and": [existing, {"businessId": business_id}]} if existing else {"businessId": business_id}
-            cleaned[0] = {"$match": existing}
-            full_pipeline = cleaned
-        else:
-            full_pipeline = [match_stage, *cleaned]
-        # Always cap final output.
-        full_pipeline.append({"$limit": limit})
-        cursor = self.db[collection].aggregate(full_pipeline)
-        return [doc async for doc in cursor]
+
+        async def producer() -> list[dict[str, Any]]:
+            # Force businessId into the first $match. If the caller supplied one,
+            # we $and it; otherwise we add it directly.
+            match_stage = {"$match": {"businessId": business_id}}
+            if cleaned and "$match" in cleaned[0]:
+                existing = cleaned[0]["$match"] or {}
+                effective = (
+                    {"$and": [existing, {"businessId": business_id}]}
+                    if existing
+                    else {"businessId": business_id}
+                )
+                full_pipeline = [{"$match": effective}, *cleaned[1:]]
+            else:
+                full_pipeline = [match_stage, *cleaned]
+            # Always cap final output.
+            full_pipeline.append({"$limit": capped_limit})
+            cursor = self.db[collection].aggregate(full_pipeline)
+            return [doc async for doc in cursor]
+
+        ttl = get_settings().ai_cache_mcp_ttl_seconds
+        result = await cached(
+            scope="mcp",
+            business_id=business_id,
+            params={"op": "aggregate", "collection": collection, "pipeline": cleaned, "limit": capped_limit},
+            ttl=ttl,
+            producer=producer,
+        )
+        return list(result or [])

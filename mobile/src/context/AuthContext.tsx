@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/api/client';
 import { clearTokens, getStoredUser, setStoredUser, setTokens } from '@/lib/tokenStore';
@@ -32,16 +33,23 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [theme] = useState<ThemeMode>('light');
+  const queryClient = useQueryClient();
 
-  const hydrate = async (): Promise<void> => {
+  const hydrate = useCallback(async (): Promise<void> => {
     const storedUser = await getStoredUser();
     if (storedUser) {
-      setUser(JSON.parse(storedUser) as AuthUser);
+      try {
+        setUser(JSON.parse(storedUser) as AuthUser);
+      } catch {
+        // Corrupted JSON – wipe it so the user isn't stuck.
+        await clearTokens().catch(() => undefined);
+        setUser(null);
+      }
     }
     setIsReady(true);
-  };
+  }, []);
 
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = useCallback(async (email: string, password: string): Promise<void> => {
     // Backend LoginRequest expects `username` (which it lowercases and matches against
     // either the hardcoded admin username or any user's email).
     const response = await apiClient.post('/api/v1/auth/login', { username: email, password }) as { accessToken: string; refreshToken: string; user?: AuthUser };
@@ -50,12 +58,16 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       await setStoredUser(JSON.stringify(response.user));
       setUser(response.user);
     }
-  };
+  }, []);
 
-  const logout = async (): Promise<void> => {
-    await clearTokens();
+  const logout = useCallback(async (): Promise<void> => {
+    // Best-effort clear: never throw out of logout, otherwise the UI gets stuck
+    // in a "busy" state with no feedback. SecureStore.deleteItem can reject on
+    // some Android emulator builds when a key was never written.
+    await clearTokens().catch(() => undefined);
     setUser(null);
-  };
+    queryClient.clear();
+  }, [queryClient]);
 
   const value = useMemo<AuthState>(
     () => ({
@@ -67,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       login,
       logout,
     }),
-    [user, isReady, theme],
+    [user, isReady, theme, hydrate, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.ai import router as ai_router
+from app.api.streaming import router as ai_streaming_router
 from app.api.allocations import router as allocations_router
 from app.api.analytics import router as analytics_router
 from app.api.attendance import router as attendance_router
@@ -38,4 +39,5 @@ api_router.include_router(reports_router)
 api_router.include_router(analytics_router)
 api_router.include_router(notifications_router)
 api_router.include_router(ai_router)
+api_router.include_router(ai_streaming_router)
 api_router.include_router(mcp_router)

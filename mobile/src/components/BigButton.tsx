@@ -1,6 +1,7 @@
-import { Pressable, Text, StyleSheet, View, type ViewStyle } from 'react-native';
+import { Pressable, Text, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native';
 
 import { colors } from '@/lib/colors';
+import { scaleValue } from '@/lib/responsive';
 
 interface BigButtonProps {
   label: string;
@@ -12,8 +13,11 @@ interface BigButtonProps {
   style?: ViewStyle;
 }
 
-// Big, full-width tappable surface used on the Home dashboard and screen roots
-// where the worker should see one obvious next action.
+/**
+ * Big, full-width tappable surface used on the Home dashboard and screen roots
+ * where the worker should see one obvious next action. Sizing scales with
+ * screen width so the CTA looks intentional on phones and tablets alike.
+ */
 export function BigButton({
   label,
   caption,
@@ -23,13 +27,31 @@ export function BigButton({
   icon,
   style,
 }: BigButtonProps): JSX.Element {
+  const { width } = useWindowDimensions();
+  const padV = scaleValue(22, width);
+  const padH = scaleValue(20, width);
+  const radius = scaleValue(22, width);
+  const minH = scaleValue(84, width);
+  const gap = scaleValue(14, width);
+  const iconW = scaleValue(28, width);
+  const labelSize = scaleValue(18, width);
+  const captionSize = scaleValue(12, width);
+
   const container =
     variant === 'primary' ? styles.primary : variant === 'soft' ? styles.soft : styles.outline;
   const labelColor = variant === 'primary' ? colors.accentText : colors.text;
+
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       style={({ pressed }) => [
+        {
+          paddingVertical: padV,
+          paddingHorizontal: padH,
+          borderRadius: radius,
+          minHeight: minH,
+          gap,
+        },
         styles.container,
         container,
         disabled ? styles.disabled : null,
@@ -37,14 +59,20 @@ export function BigButton({
         style,
       ]}
     >
-      <View style={styles.row}>
-        {icon ? <View style={styles.icon}>{icon}</View> : null}
-        <View style={styles.textWrap}>
-          <Text style={[styles.label, { color: labelColor }]} numberOfLines={1}>
+      <View style={[styles.row, { gap }]}>
+        {icon ? <View style={{ width: iconW, alignItems: 'center' }}>{icon}</View> : null}
+        <View style={[styles.textWrap, { gap: 4 }]}>
+          <Text
+            style={[styles.label, { color: labelColor, fontSize: labelSize }]}
+            numberOfLines={2}
+          >
             {label}
           </Text>
           {caption ? (
-            <Text style={[styles.caption, { color: labelColor }]} numberOfLines={2}>
+            <Text
+              style={[styles.caption, { color: labelColor, fontSize: captionSize }]}
+              numberOfLines={3}
+            >
               {caption}
             </Text>
           ) : null}
@@ -56,11 +84,7 @@ export function BigButton({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 22,
-    paddingHorizontal: 20,
-    borderRadius: 22,
     borderWidth: 2,
-    minHeight: 84,
     justifyContent: 'center',
   },
   primary: { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -68,9 +92,8 @@ const styles = StyleSheet.create({
   outline: { backgroundColor: colors.background, borderColor: colors.borderStrong },
   disabled: { opacity: 0.55 },
   pressed: { opacity: 0.85 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  icon: { width: 28, alignItems: 'center' },
-  textWrap: { flex: 1, gap: 4 },
-  label: { fontSize: 18, fontWeight: '900' },
-  caption: { fontSize: 12, fontWeight: '500', opacity: 0.85 },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  textWrap: { flex: 1 },
+  label: { fontWeight: '900' },
+  caption: { fontWeight: '500', opacity: 0.85 },
 });

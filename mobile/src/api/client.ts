@@ -1,9 +1,34 @@
 import axios, { type AxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '@/lib/tokenStore';
 import { ApiException, type ApiError, type ApiSuccess } from '@/types/api';
 
-const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+// Resolve the backend base URL with sensible per-platform defaults so the
+// app "just works" whether you open it in Expo Web, an emulator, or a
+// physical device on the same LAN — without hardcoding an IP.
+//
+// Override at runtime with EXPO_PUBLIC_API_BASE_URL (e.g. http://192.168.1.20:8000).
+function resolveBaseURL(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+
+  if (Platform.OS === 'android') {
+    // Android emulator maps host machine localhost to 10.0.2.2
+    return 'http://10.0.2.2:8000';
+  }
+  // iOS simulator, web, and any other platform can reach the host via localhost
+  return 'http://localhost:8000';
+}
+
+const baseURL = resolveBaseURL();
+
+// Surface the resolved URL once at module load. This makes misconfiguration
+// obvious in the Metro console instead of mysterious "Network error" later.
+if (typeof console !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log(`[api] baseURL = ${baseURL} (platform = ${Platform.OS})`);
+}
 
 export const apiClient = axios.create({
   baseURL,
@@ -65,6 +90,16 @@ apiClient.interceptors.response.use(
       throw new ApiException(error.response.data.error.message, error.response.data.error.code, error.response.data.error.details);
     }
 
-    throw new ApiException('Network error', 'NETWORK_ERROR');
+    // No HTTP response = the request never reached the backend.
+    // Give the user a hint that points at the most common causes instead of
+    // a bare "Network error".
+    const detail =
+      error.code === 'ECONNABORTED'
+        ? 'The server took too long to respond.'
+        : error.message || 'Could not reach the server.';
+    throw new ApiException(
+      `Network error: ${detail} (tried ${baseURL}). Is the backend running and reachable from this device?`,
+      'NETWORK_ERROR',
+    );
   },
 );
