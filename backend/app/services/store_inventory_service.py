@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+
+from bson import ObjectId
+from bson.errors import InvalidId
 
 from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.ingredient_repository import IngredientRepository
@@ -108,10 +111,20 @@ class StoreInventoryService:
         if not today_iso:
             today_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+        # Look at a small window (today plus the previous 2 days) instead of
+        # strictly today. Reason: an ACTIVE allocation dated yesterday may
+        # still have unsold quantity the worker needs to make, and the
+        # store's shelf still holds those ingredients — without widening the
+        # window the worker would see "No active allocations for today" even
+        # though there's real work to do. The aggregation below still uses
+        # each allocation's `quantity - sold`, so a fully sold allocation
+        # contributes zero and is correctly invisible.
+        start_window = (datetime.strptime(today_iso, "%Y-%m-%d") - timedelta(days=2)).strftime("%Y-%m-%d")
+
         rows = await self.allocations.list(
             business_id=business_id,
             store_id=store_id,
-            start_date=today_iso,
+            start_date=start_window,
             end_date=today_iso,
             status="ACTIVE",
             limit=500,
@@ -136,17 +149,20 @@ class StoreInventoryService:
             return []
 
         # Resolve master ingredient docs in one round-trip so workers see
-        # proper names instead of raw ids. Falls back to a global id-only
-        # lookup for the same reason list_for_store does.
+        # proper names instead of raw ids. _id is an ObjectId in Mongo, so
+        # we must convert the string ids we aggregated from the deductions
+        # array before querying — otherwise the filter won't match.
         name_map: Dict[str, Dict[str, Any]] = {}
-        cursor = self.ingredients.collection.find(
-            {"businessId": business_id, "_id": {"$in": list(required.keys())}}
-        )
-        async for ing in cursor:
-            name_map[str(ing.get("_id"))] = ing
-        unresolved = [iid for iid in required if iid not in name_map]
-        if unresolved:
-            cursor = self.ingredients.collection.find({"_id": {"$in": unresolved}})
+        oids: List[ObjectId] = []
+        for iid in required.keys():
+            try:
+                oids.append(ObjectId(iid))
+            except (InvalidId, TypeError):
+                continue
+        if oids:
+            cursor = self.ingredients.collection.find(
+                {"businessId": business_id, "_id": {"$in": oids}}
+            )
             async for ing in cursor:
                 name_map[str(ing.get("_id"))] = ing
 

@@ -26,6 +26,7 @@ import {
 } from '@/features/allocations/hooks/use-allocations';
 import { useStores } from '@/features/stores/hooks/use-stores';
 import { useFood } from '@/features/food/hooks/use-food';
+import { useIngredients } from '@/features/inventory/hooks/use-ingredients';
 import type { Allocation, AllocationCreateRequest } from '@/api/endpoints/allocations';
 import { ApiException } from '@/types/api';
 
@@ -177,7 +178,14 @@ function AllocationDetailSheet({
   onOpenChange: (next: boolean) => void;
 }): JSX.Element {
   const { data: stores = [] } = useStores();
+  const { data: ingredients = [] } = useIngredients();
   const storeName = stores.find((s) => s.id === allocation?.storeId)?.name ?? allocation?.storeId;
+  // Build a quick lookup so we can show ingredient names instead of raw IDs
+  // when the backend's AllocationDeduction payload omits ingredientName.
+  const ingredientNameById = useMemo(
+    () => new Map(ingredients.map((ing) => [ing.id, ing.name])),
+    [ingredients],
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={allocation ? `${allocation.foodName} — ${storeName}` : 'Allocation detail'}>
@@ -222,7 +230,9 @@ function AllocationDetailSheet({
             <ul className="space-y-2">
               {(allocation.deductions ?? []).map((d) => (
                 <li key={d.ingredientId} className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm">
-                  <span className="font-medium text-zinc-950">{d.ingredientName ?? d.ingredientId}</span>
+                  <span className="font-medium text-zinc-950">
+                    {d.ingredientName ?? ingredientNameById.get(d.ingredientId) ?? d.ingredientId}
+                  </span>
                   <span className="text-xs text-zinc-500">
                     {d.perUnit.toFixed(3)} × {allocation.quantity} = <strong className="text-zinc-950">{d.required.toFixed(3)}</strong> · {d.before} → {d.after}
                   </span>

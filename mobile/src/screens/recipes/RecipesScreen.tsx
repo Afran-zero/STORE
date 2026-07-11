@@ -96,7 +96,15 @@ function RecipesScreenImpl(): JSX.Element {
   const recipesQuery = useQuery({
     queryKey: ['recipes', 'all'],
     queryFn: listRecipes,
-    staleTime: 5 * 60_000,
+    // Re-fetch on every mount instead of trusting the AsyncStorage-cached
+    // response. The cachePersister replays the entire previous session's
+    // cache, and if the previous session captured an empty array (e.g. the
+    // worker had no recipes cached yet, or hit a 401 that was treated as
+    // empty) the empty value gets locked in for the full staleTime window.
+    // staleTime: 0 + refetchOnMount: 'always' guarantees a fresh fetch when
+    // the worker opens the Recipes tab.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);

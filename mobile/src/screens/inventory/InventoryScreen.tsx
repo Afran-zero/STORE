@@ -1,6 +1,6 @@
-import { memo, useCallback } from 'react';
-import { FlatList, ListRenderItem, StyleSheet, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { memo, useCallback, useEffect } from 'react';
+import { AppState, FlatList, ListRenderItem, StyleSheet, View } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
@@ -61,12 +61,31 @@ function InventoryScreenImpl({
 }: InventoryScreenProps = {}): JSX.Element {
   const { user } = useAuth();
   const storeId = user?.assignedStore ?? '';
+  const qc = useQueryClient();
 
   const needsQuery = useQuery({
     queryKey: ['store-needs-today', storeId],
     queryFn: () => getStoreNeedsToday(storeId),
     enabled: Boolean(storeId),
+    // The admin web app mutates allocations out-of-band, so the worker app
+    // never sees an invalidateQueries call when a new allocation lands.
+    // Poll on a 30 s cadence and refetch when the app returns to the
+    // foreground so workers don't have to pull-to-refresh manually.
+    refetchInterval: 30_000,
+    staleTime: 0,
   });
+
+  // Refetch whenever the app becomes active again (covers the common
+  // pattern: worker backgrounds the app, admin allocates on the web, worker
+  // re-opens the app and expects today's stock to be up to date).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void qc.invalidateQueries({ queryKey: ['store-needs-today', storeId] });
+      }
+    });
+    return () => sub.remove();
+  }, [qc, storeId]);
 
   const rows = needsQuery.data ?? [];
   const shortCount = rows.filter((r) => Number(r.shortfall ?? 0) > 0).length;
@@ -124,6 +143,16 @@ function InventoryScreenImpl({
             Once your manager allocates food items to this store for today, the
             ingredients you need to make them will show up here.
           </AppText>
+          {storeId ? (
+            <AppText variant="caption" faint style={styles.mt8}>
+              Logged-in store id: {storeId}
+            </AppText>
+          ) : (
+            <AppText variant="caption" faint style={styles.mt8}>
+              No store is assigned to your account. Ask your admin to set one
+              in Users &raquo; Edit.
+            </AppText>
+          )}
         </Card>
       ) : (
         <FlatList
@@ -153,4 +182,5 @@ const styles = StyleSheet.create({
   },
   rowTitle: { flex: 1 },
   sep12: { height: 12 },
+  mt8: { marginTop: 8 },
 });

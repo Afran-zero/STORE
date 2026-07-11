@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select';
 import { useStores } from '@/features/stores/hooks/use-stores';
 import { useFood } from '@/features/food/hooks/use-food';
 import { useAllocateFood } from '@/features/inventory/hooks/use-allocate-food';
+import { useIngredients } from '@/features/inventory/hooks/use-ingredients';
 import { ApiException } from '@/types/api';
 import type { FoodAllocationDeduction } from '@/api/endpoints/inventory';
 
@@ -34,6 +35,7 @@ interface DeductionRow {
 export function AllocateFoodCard(): JSX.Element {
   const { data: stores = [] } = useStores();
   const { data: foodItems = [] } = useFood();
+  const { data: ingredients = [] } = useIngredients();
   const mutation = useAllocateFood();
   const [lastDeductions, setLastDeductions] = useState<{ foodName: string; quantity: number; deductions: DeductionRow[] } | null>(null);
 
@@ -114,12 +116,17 @@ export function AllocateFoodCard(): JSX.Element {
             Last allocation: {lastDeductions.quantity} × {lastDeductions.foodName}
           </p>
           <ul className="mt-2 space-y-1 text-xs text-zinc-700">
-            {lastDeductions.deductions.map((d) => (
-              <li key={d.ingredientId} className="flex justify-between">
-                <span className="font-mono">{d.ingredientId}</span>
-                <span>−{d.quantity} (stock {d.before} → {d.after})</span>
-              </li>
-            ))}
+            {lastDeductions.deductions.map((d) => {
+              const name = ingredients.find((ing) => ing.id === d.ingredientId)?.name;
+              return (
+                <li key={d.ingredientId} className="flex justify-between">
+                  <span className="font-medium text-zinc-950">
+                    {name ?? <span className="font-mono text-xs text-zinc-400">{d.ingredientId}</span>}
+                  </span>
+                  <span>−{d.quantity} (stock {d.before} → {d.after})</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}

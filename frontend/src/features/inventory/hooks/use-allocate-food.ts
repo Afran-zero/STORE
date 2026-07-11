@@ -8,10 +8,14 @@ export function useAllocateFood() {
   return useMutation({
     mutationFn: (input: FoodAllocationRequest) => allocateFood(input),
     onSuccess: (result: FoodAllocationResult) => {
-      // Invalidate store-inventory + ingredient stock views for the affected store
+      // Invalidate store-inventory + ingredient stock views for the affected store.
+      // The master ingredients list ('Stock (pool)' on /inventory) must also refetch,
+      // because the backend $inc-decrements currentStock per recipe ingredient
+      // (backend/app/services/store_inventory_service.py try_consume_pool).
       qc.invalidateQueries({ queryKey: storeInventoryKeys.list(result.storeId) });
       qc.invalidateQueries({ queryKey: storeInventoryKeys.lowStock(result.storeId) });
       qc.invalidateQueries({ queryKey: inventoryKeys.lowStock() });
+      qc.invalidateQueries({ queryKey: ['inventory', 'ingredients'] });
       qc.invalidateQueries({ queryKey: ['analytics', 'dashboard'] });
     },
   });

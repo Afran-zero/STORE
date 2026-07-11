@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from bson import ObjectId
+from bson.errors import InvalidId
+
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.recipe_repository import RecipeRepository
 
@@ -24,13 +27,73 @@ class RecipeService:
         self.ingredients = IngredientRepository(db)
 
     async def list_recipes(self, *, business_id: str) -> List[Dict[str, Any]]:
-        return await self.repo.list(business_id=business_id)
+        items = await self.repo.list(business_id=business_id)
+        # Enrich every recipe's ingredients array with `ingredientName` (and
+        # back-fill `unit` if missing) so callers — especially the mobile
+        # RecipesScreen — see "Bun", "Patty", "Seasoning" instead of the raw
+        # Mongo _id. One round-trip per businessId for any distinct ingredient
+        # IDs across all recipes.
+        name_map = await self._bulk_ingredient_name_map(
+            business_id, [iid for r in items for iid in (l.get("ingredientId") for l in (r.get("ingredients") or [])) if iid]
+        )
+        for r in items:
+            self._apply_name_map(r, name_map)
+        return items
 
     async def get_recipe(self, *, business_id: str, recipe_id: str) -> Dict[str, Any]:
         item = await self.repo.get(business_id=business_id, recipe_id=recipe_id)
         if not item:
             raise RecipeNotFoundError(recipe_id)
+        name_map = await self._bulk_ingredient_name_map(
+            business_id, [str(l.get("ingredientId")) for l in (item.get("ingredients") or []) if l.get("ingredientId")]
+        )
+        self._apply_name_map(item, name_map)
         return item
+
+    async def _bulk_ingredient_name_map(
+        self, business_id: str, ids: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """One round-trip lookup for many ingredient ids across many recipes."""
+        uniq_strs = {str(i) for i in ids if i}
+        if not uniq_strs:
+            return {}
+        # _id is an ObjectId in Mongo — convert strings that look like ObjectIds
+        # to that type so the $in filter actually matches. Strings that aren't
+        # valid ObjectIds are skipped (better than raising).
+        oids: List[ObjectId] = []
+        for s in uniq_strs:
+            try:
+                oids.append(ObjectId(s))
+            except (InvalidId, TypeError):
+                continue
+        if not oids:
+            return {}
+        name_map: Dict[str, Dict[str, Any]] = {}
+        cursor = self.ingredients.collection.find({"_id": {"$in": oids}})
+        async for ing in cursor:
+            name_map[str(ing.get("_id"))] = ing
+        return name_map
+
+    @staticmethod
+    def _apply_name_map(recipe: Dict[str, Any], name_map: Dict[str, Dict[str, Any]]) -> None:
+        """Mutates ``recipe`` in place, patching each ingredient line."""
+        lines = recipe.get("ingredients") or []
+        if not lines:
+            return
+        enriched: List[Dict[str, Any]] = []
+        for line in lines:
+            ing = name_map.get(str(line.get("ingredientId")))
+            new_line = dict(line)
+            if ing:
+                # Don't clobber if recipe explicitly stored an ingredientName
+                # at creation — but in practice we don't accept that field,
+                # so this is purely defensive.
+                new_line["ingredientName"] = ing.get("name") or new_line.get("ingredientName")
+                # Back-fill unit only when missing.
+                if not new_line.get("unit"):
+                    new_line["unit"] = ing.get("unit")
+            enriched.append(new_line)
+        recipe["ingredients"] = enriched
 
     async def create_recipe(self, *, business_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         name = (payload.get("name") or "").strip()

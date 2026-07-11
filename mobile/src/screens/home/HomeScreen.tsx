@@ -28,7 +28,7 @@ import { StatusChip } from '@/components/StatusChip';
 import { SectionHeader, Metric, Divider } from '@/components/Section';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useAuth } from '@/context/AuthContext';
-import { getAttendanceToday, type AttendanceRecord } from '@/api/endpoints/attendance';
+import { clockIn, getAttendanceToday, type AttendanceRecord } from '@/api/endpoints/attendance';
 import {
   getStoreAllocationSummary,
   type Allocation,
@@ -203,10 +203,33 @@ function HomeScreenImpl(): JSX.Element {
   const clockedOut = Boolean(attendance?.clockOut);
 
   const activeAllocations = useMemo<Allocation[]>(
-    () =>
-      (allocationQuery.data?.allocations ?? []).filter(
-        (a) => (a.status ?? '').toUpperCase() === 'ACTIVE',
-      ),
+    () => {
+      // Two ACTIVE allocations for the same food item (e.g. two batches
+      // allocated on different days) would render as two rows sharing the
+      // same `pending[foodItemId]` slot — tapping + on one would visually
+      // advance the other, which is misleading. Merge by foodItemId so each
+      // menu item shows exactly one row with the summed quantity/sold.
+      const byFood = new Map<string, Allocation>();
+      for (const a of (allocationQuery.data?.allocations ?? [])) {
+        if ((a.status ?? '').toUpperCase() !== 'ACTIVE') continue;
+        const key = a.foodItemId;
+        const existing = byFood.get(key);
+        if (!existing) {
+          byFood.set(key, { ...a });
+          continue;
+        }
+        const mergedQuantity = Number(existing.quantity ?? 0) + Number(a.quantity ?? 0);
+        const mergedSold = Number(existing.sold ?? 0) + Number(a.sold ?? 0);
+        byFood.set(key, {
+          ...existing,
+          quantity: mergedQuantity,
+          sold: mergedSold,
+          // Preserve the freshest createdAt/updatedAt for display
+          updatedAt: (a.updatedAt ?? existing.updatedAt) as string | undefined,
+        });
+      }
+      return Array.from(byFood.values());
+    },
     [allocationQuery.data],
   );
 
@@ -244,6 +267,20 @@ function HomeScreenImpl(): JSX.Element {
       return changed || Object.keys(current).length !== Object.keys(next).length ? next : current;
     });
   }, [activeAllocations, soldByFoodIdToday]);
+
+  // Clock-in mutation wired on the home screen so the "Clock in to start
+  // your shift" prompt is actionable in place — the user no longer has to
+  // drill into Attendance to start their shift.
+  const clockInMut = useMutation({
+    mutationFn: () => clockIn({ storeId: user?.assignedStore ?? null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+    },
+    onError: (err) => {
+      const message = err instanceof ApiException ? err.message : 'Clock-in failed';
+      Alert.alert('Clock in failed', message);
+    },
+  });
 
   const commitMutation = useMutation({
     mutationFn: async (lines: PendingLine[]) => {
@@ -376,7 +413,10 @@ function HomeScreenImpl(): JSX.Element {
     [pending, handleInc, handleDec],
   );
 
-  const keyExtractor = useCallback((a: Allocation) => a.id, []);
+  // Key by foodItemId now that we dedupe — keeps React keys stable across
+// re-renders and prevents list re-mount thrash when the backend shuffles
+// allocation rows.
+const keyExtractor = useCallback((a: Allocation) => a.foodItemId, []);
 
   return (
     <AppScreen
@@ -447,16 +487,37 @@ function HomeScreenImpl(): JSX.Element {
         </View>
 
         <Card filled>
-          <AppText variant="overline">Next step</AppText>
-          <AppText variant="heading" style={styles.headingTop}>
-            {!clockedIn
-              ? 'Clock in to start your shift'
-              : clockedOut
-                ? 'Shift done — review today'
-                : activeAllocated === 0
-                  ? 'No active allocation today'
-                  : `Sell ${activeAllocations[0]?.foodName ?? 'an item'}`}
-          </AppText>
+          <Pressable
+            onPress={() => {
+              if (!clockedIn && !clockedOut) {
+                // Trigger the in-place clock-in mutation; the success state
+                // falls back to the existing attendance refetch path.
+                clockInMut.mutate();
+                return;
+              }
+              // Already clocked in / out — drill into Attendance for detail.
+              nav.navigate('Attendance');
+            }}
+            disabled={clockInMut.isPending}
+          >
+            <AppText variant="overline">Next step</AppText>
+            <AppText variant="heading" style={styles.headingTop}>
+              {clockInMut.isPending
+                ? 'Clocking in…'
+                : !clockedIn
+                  ? 'Clock in to start your shift  ›'
+                  : clockedOut
+                    ? 'Shift done — review today'
+                    : activeAllocated === 0
+                      ? 'No active allocation today'
+                      : `Sell ${activeAllocations[0]?.foodName ?? 'an item'}`}
+            </AppText>
+            {!clockedIn && !clockedOut ? (
+              <AppText variant="caption" faint style={styles.mt4}>
+                Tap to clock in. Or open Attendance to set notes.
+              </AppText>
+            ) : null}
+          </Pressable>
         </Card>
 
         <SectionHeader
@@ -629,6 +690,7 @@ const styles = StyleSheet.create({
   headingTop: { marginTop: 6 },
   chipTop: { marginTop: 10 },
   commitText: { flex: 1 },
+  mt4: { marginTop: 4 },
   stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   stepperBtn: {
     width: 56,

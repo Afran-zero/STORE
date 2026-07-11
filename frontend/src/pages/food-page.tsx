@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Pencil, Trash2, ReceiptText, Calculator } from 'lucide-react';
+import { Plus, Pencil, Trash2, ReceiptText, Calculator, Store as StoreIcon, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ import {
   useUpdateFoodMutation,
 } from '@/features/food/hooks/use-food';
 import { useRecipes } from '@/features/recipes/hooks/use-recipes';
+import { useStores } from '@/features/stores/hooks/use-stores';
 import type { FoodItem } from '@/api/endpoints/food';
 import { ApiException } from '@/types/api';
 
@@ -33,6 +34,9 @@ const schema = z.object({
   recipeId: z.string().min(1, 'Required'),
   imageUrl: z.string().url().optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
+  // assignedStores is multi-select; tracked as comma-separated string in the
+  // form, then split on submit to match the API contract.
+  assignedStoresCsv: z.string().optional().default(''),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -40,16 +44,29 @@ type FormValues = z.infer<typeof schema>;
 export function FoodPage(): JSX.Element {
   const { data, isLoading } = useFood();
   const { data: recipes = [] } = useRecipes();
+  const { data: stores = [] } = useStores();
   const [editing, setEditing] = useState<FoodItem | null>(null);
   const [opening, setOpening] = useState(false);
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema) });
-  const { register, handleSubmit, reset, formState: { errors } } = form;
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = form;
+  const assignedCsv = watch('assignedStoresCsv') ?? '';
 
   const createMutation = useCreateFood();
   const updateMutation = useUpdateFoodMutation();
   const deleteMutation = useDeleteFood();
   const recalcMutation = useRecalculateFoodCost();
+
+  const selectedStores = new Set(
+    assignedCsv.split(',').map((s) => s.trim()).filter(Boolean),
+  );
+
+  function toggleStore(storeId: string) {
+    const next = new Set(selectedStores);
+    if (next.has(storeId)) next.delete(storeId);
+    else next.add(storeId);
+    setValue('assignedStoresCsv', Array.from(next).join(','), { shouldDirty: true });
+  }
 
   useEffect(() => {
     if (opening && editing) {
@@ -61,20 +78,50 @@ export function FoodPage(): JSX.Element {
         recipeId: editing.recipeId ?? '',
         imageUrl: editing.imageUrl ?? '',
         status: (editing.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE'),
+        assignedStoresCsv: (editing.assignedStores ?? []).join(','),
       });
     } else if (opening && !editing) {
-      reset({ name: '', description: '', category: '', price: 0, recipeId: recipes[0]?.id ?? '', imageUrl: '', status: 'ACTIVE' });
+      reset({
+        name: '',
+        description: '',
+        category: '',
+        price: 0,
+        recipeId: recipes[0]?.id ?? '',
+        imageUrl: '',
+        status: 'ACTIVE',
+        assignedStoresCsv: '',
+      });
     }
   }, [opening, editing, recipes, reset]);
 
   async function onSubmit(values: FormValues) {
     try {
-      const payload = { ...values, imageUrl: values.imageUrl || undefined };
+      const assignedStores = values.assignedStoresCsv
+        ? values.assignedStoresCsv.split(',').map((s) => s.trim()).filter(Boolean)
+        : undefined;
+      const payload = {
+        name: values.name,
+        description: values.description,
+        category: values.category,
+        price: values.price,
+        recipeId: values.recipeId,
+        imageUrl: values.imageUrl || undefined,
+        status: values.status,
+        assignedStores,
+      };
       if (editing && editing.id) {
         await updateMutation.mutateAsync({ id: editing.id, input: payload });
         toast.success(`Updated ${values.name}`);
       } else {
-        await createMutation.mutateAsync(payload as { name: string; price: number; recipeId: string; description?: string; category?: string; imageUrl?: string });
+        await createMutation.mutateAsync(payload as {
+          name: string;
+          price: number;
+          recipeId: string;
+          description?: string;
+          category?: string;
+          imageUrl?: string;
+          assignedStores?: string[];
+        });
         toast.success(`Created ${values.name}`);
       }
       setOpening(false);
@@ -135,6 +182,13 @@ export function FoodPage(): JSX.Element {
                 <Badge>{item.status ?? 'ACTIVE'}</Badge>
               </div>
               {item.description ? <p className="text-sm text-zinc-600">{item.description}</p> : null}
+              {item.assignedStores && item.assignedStores.length > 0 ? (
+                <p className="text-xs text-zinc-500">
+                  In {item.assignedStores.length} store{item.assignedStores.length === 1 ? '' : 's'}
+                </p>
+              ) : (
+                <p className="text-xs text-amber-600">Not assigned to any store</p>
+              )}
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-2xl bg-zinc-50 px-3 py-2">
                   <p className="text-zinc-500">Price</p>
@@ -201,6 +255,43 @@ export function FoodPage(): JSX.Element {
           <div>
             <Label htmlFor="imageUrl">Image URL (optional)</Label>
             <Input id="imageUrl" {...register('imageUrl')} className="mt-1" />
+          </div>
+          <div>
+            <Label>Assigned stores</Label>
+            <p className="mt-1 text-xs text-zinc-500">
+              Pick which stores can sell this item. Workers at unselected stores won't see it on their menu.
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {stores.length === 0 ? (
+                <p className="col-span-2 rounded-2xl border border-dashed border-zinc-200 p-3 text-center text-xs text-zinc-500">
+                  No stores yet. Create one in Stores first.
+                </p>
+              ) : (
+                stores.map((store) => {
+                  const isSelected = selectedStores.has(store.id);
+                  return (
+                    <button
+                      key={store.id}
+                      type="button"
+                      onClick={() => toggleStore(store.id)}
+                      className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm transition ${
+                        isSelected
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                          : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                      }`}
+                      aria-pressed={isSelected}
+                    >
+                      <span className="flex items-center gap-2">
+                        <StoreIcon className="h-3.5 w-3.5" />
+                        {store.name}
+                      </span>
+                      {isSelected ? <Check className="h-4 w-4" /> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <input type="hidden" {...register('assignedStoresCsv')} />
           </div>
           <div>
             <Label htmlFor="status">Status</Label>

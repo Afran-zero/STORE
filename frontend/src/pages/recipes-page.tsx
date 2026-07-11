@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SubmitErrorHandler } from 'react-hook-form';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
@@ -58,6 +58,12 @@ export function RecipesPage(): JSX.Element {
   const createMutation = useCreateRecipe();
   const updateMutation = useUpdateRecipeMutation();
   const deleteMutation = useDeleteRecipe();
+
+  // Lookup table so recipe cards can render ingredient names instead of IDs.
+  const ingredientNameById = useMemo(
+    () => new Map(ingredients.map((ing) => [ing.id, ing.name])),
+    [ingredients],
+  );
 
   useEffect(() => {
     if (opening && editing) {
@@ -169,6 +175,7 @@ export function RecipesPage(): JSX.Element {
               key={recipe.id}
               recipe={recipe}
               foodName={recipe.foodItemId ? foodItems.find((f) => f.id === recipe.foodItemId)?.name : null}
+              ingredientNameById={ingredientNameById}
               onEdit={() => { setEditing(recipe); setOpening(true); }}
               onDelete={() => onDelete(recipe)}
             />
@@ -281,7 +288,7 @@ export function RecipesPage(): JSX.Element {
   );
 }
 
-function RecipeCard({ recipe, foodName, onEdit, onDelete }: { recipe: Recipe; foodName?: string | null; onEdit: () => void; onDelete: () => void }): JSX.Element {
+function RecipeCard({ recipe, foodName, ingredientNameById, onEdit, onDelete }: { recipe: Recipe; foodName?: string | null; ingredientNameById: Map<string, string>; onEdit: () => void; onDelete: () => void }): JSX.Element {
   const { data: cost } = useRecipeCost(recipe.id);
   return (
     <Card className="flex flex-col gap-3">
@@ -301,6 +308,23 @@ function RecipeCard({ recipe, foodName, onEdit, onDelete }: { recipe: Recipe; fo
         <Badge>{recipe.status ?? 'APPROVED'}</Badge>
       </div>
       {recipe.description ? <p className="text-sm text-zinc-600">{recipe.description}</p> : null}
+      {recipe.ingredients.length > 0 ? (
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Ingredients</p>
+          <ul className="mt-1 space-y-0.5 text-xs text-zinc-700">
+            {recipe.ingredients.map((line, idx) => (
+              <li key={`${line.ingredientId}-${idx}`} className="flex items-center justify-between">
+                <span className="font-medium text-zinc-950">
+                  {ingredientNameById.get(line.ingredientId) ?? line.ingredientId}
+                </span>
+                <span className="text-zinc-500">
+                  {line.quantity} {line.unit ?? ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {recipe.preparationSteps && recipe.preparationSteps.length > 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">

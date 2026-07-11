@@ -17,6 +17,10 @@ export function useIngredients(params: { category?: string; lowStock?: boolean }
   return useQuery({
     queryKey: inventoryKeys.list(params),
     queryFn: () => listIngredients(params),
+    // Soft-reconcile every 30 s so cross-tab allocations (or any
+    // server-side mutation we missed invalidating) show up without a manual
+    // page reload. Matches the cadence used by useStoreInventory.
+    refetchInterval: 30_000,
   });
 }
 

@@ -55,6 +55,12 @@ export function useCreateAllocation() {
     mutationFn: (input: AllocationCreateRequest) => createAllocation(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: allocationKeys.all });
+      // Creating an allocation pulls recipe ingredients out of the master pool
+      // and onto a store shelf — refresh both views so the Stock (pool) column
+      // on /inventory and the per-store shelves update immediately.
+      qc.invalidateQueries({ queryKey: ['inventory', 'ingredients'] });
+      qc.invalidateQueries({ queryKey: ['store-inventory'] });
+      qc.invalidateQueries({ queryKey: ['analytics', 'store-summary'] });
     },
   });
 }
@@ -66,6 +72,10 @@ export function useUpdateAllocation() {
     onSuccess: (allocation: Allocation) => {
       qc.invalidateQueries({ queryKey: allocationKeys.all });
       qc.setQueryData(allocationKeys.detail(allocation.id), allocation);
+      // Quantity edits also move master-pool stock, so refresh the same views.
+      qc.invalidateQueries({ queryKey: ['inventory', 'ingredients'] });
+      qc.invalidateQueries({ queryKey: ['store-inventory'] });
+      qc.invalidateQueries({ queryKey: ['analytics', 'store-summary'] });
     },
   });
 }
