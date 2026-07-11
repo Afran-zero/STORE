@@ -1,20 +1,55 @@
-import { useCallback } from 'react';
-import { Text, View, StyleSheet, ScrollView } from 'react-native';
+import { memo, useCallback } from 'react';
+import { FlatList, ListRenderItem, StyleSheet, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { StatusChip } from '@/components/StatusChip';
+import { Metric } from '@/components/Section';
 import { useAuth } from '@/context/AuthContext';
 import { getStoreInventory, type StoreInventoryRow } from '@/api/endpoints/storeInventory';
 import { colors } from '@/lib/colors';
+import { AppText } from '@/lib/typography';
 
 interface InventoryScreenProps {
   onOpenTodaysAllocation?: () => void;
 }
 
-export function InventoryScreen({ onOpenTodaysAllocation }: InventoryScreenProps = {}): JSX.Element {
+const IngredientRow = memo(function IngredientRow({
+  row,
+}: {
+  row: StoreInventoryRow;
+}): JSX.Element {
+  const min = Number(row.minimumStock ?? 0);
+  const qty = Number(row.quantity ?? 0);
+  const low = min > 0 && qty <= min;
+  const empty = qty <= 0;
+  return (
+    <Card>
+      <View style={styles.rowSpread}>
+        <AppText variant="heading" style={styles.rowTitle} numberOfLines={1}>
+          {row.ingredientName ?? row.ingredientId}
+        </AppText>
+        <StatusChip tone={low || empty ? 'accent' : 'solid'} label={empty ? 'EMPTY' : low ? 'LOW' : 'OK'} />
+      </View>
+      <View style={styles.rowSpread}>
+        <View>
+          <AppText variant="overline" faint>In store</AppText>
+          <AppText variant="heading">{qty.toFixed(2)} {row.unit ?? ''}</AppText>
+        </View>
+        <View>
+          <AppText variant="overline" faint>Minimum</AppText>
+          <AppText variant="heading">{min > 0 ? `${min.toFixed(2)} ${row.unit ?? ''}` : '—'}</AppText>
+        </View>
+      </View>
+    </Card>
+  );
+});
+
+function InventoryScreenImpl({
+  onOpenTodaysAllocation,
+}: InventoryScreenProps = {}): JSX.Element {
   const { user } = useAuth();
   const storeId = user?.assignedStore ?? '';
 
@@ -25,7 +60,6 @@ export function InventoryScreen({ onOpenTodaysAllocation }: InventoryScreenProps
   });
 
   const rows = inventoryQuery.data ?? [];
-
   const lowStockCount = rows.filter(
     (r) => Number(r.minimumStock ?? 0) > 0 && Number(r.quantity ?? 0) <= Number(r.minimumStock ?? 0),
   ).length;
@@ -33,6 +67,16 @@ export function InventoryScreen({ onOpenTodaysAllocation }: InventoryScreenProps
   const onRefresh = useCallback(() => {
     void inventoryQuery.refetch();
   }, [inventoryQuery]);
+
+  const renderRow: ListRenderItem<StoreInventoryRow> = useCallback(
+    ({ item }) => <IngredientRow row={item} />,
+    [],
+  );
+  const keyExtractor = useCallback(
+    (row: StoreInventoryRow) => `${row.storeId}-${row.ingredientId}`,
+    [],
+  );
+  const separator = useCallback(() => <View style={styles.sep12} />, []);
 
   return (
     <AppScreen
@@ -42,82 +86,61 @@ export function InventoryScreen({ onOpenTodaysAllocation }: InventoryScreenProps
       refreshing={inventoryQuery.isFetching}
     >
       <Card>
-        <View style={styles.summaryRow}>
-          <View>
-            <Text style={styles.summaryLabel}>Ingredients</Text>
-            <Text style={styles.summaryValue}>{rows.length}</Text>
-          </View>
-          <View>
-            <Text style={styles.summaryLabel}>Low stock</Text>
-            <Text style={[styles.summaryValue, lowStockCount > 0 ? styles.warn : null]}>{lowStockCount}</Text>
-          </View>
+        <View style={styles.rowSpread}>
+          <Metric label="Ingredients" value={String(rows.length)} />
+          <Metric label="Low stock" value={String(lowStockCount)} />
         </View>
         {lowStockCount > 0 ? (
-          <StatusChip tone="amber" label={`${lowStockCount} ingredient(s) at or below threshold`} />
+          <StatusChip
+            tone="accent"
+            label={`${lowStockCount} ingredient(s) at or below threshold`}
+          />
         ) : null}
       </Card>
 
       <PrimaryButton
         label="Today's allocation"
         caption="See what was allocated today, what you've used, what's left."
-        variant="soft"
         onPress={onOpenTodaysAllocation ?? (() => undefined)}
       />
 
       {inventoryQuery.isLoading ? (
         <Card>
-          <Text style={styles.loading}>Loading inventory…</Text>
+          <AppText variant="caption">Loading inventory…</AppText>
         </Card>
       ) : rows.length === 0 ? (
         <Card>
-          <Text style={styles.title}>No stock at this store yet</Text>
-          <Text style={styles.body}>
+          <AppText variant="heading">No stock at this store yet</AppText>
+          <AppText variant="body" faint>
             Ask your manager to allocate ingredients to your store, or transfer stock from the master pool.
-          </Text>
+          </AppText>
         </Card>
       ) : (
-        rows.map((row) => <IngredientRow key={`${row.storeId}-${row.ingredientId}`} row={row} />)
+        <FlatList
+          data={rows}
+          keyExtractor={keyExtractor}
+          renderItem={renderRow}
+          ItemSeparatorComponent={separator}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          scrollEnabled={false}
+        />
       )}
     </AppScreen>
   );
 }
 
-function IngredientRow({ row }: { row: StoreInventoryRow }): JSX.Element {
-  const min = Number(row.minimumStock ?? 0);
-  const qty = Number(row.quantity ?? 0);
-  const isLow = min > 0 && qty <= min;
-  const isEmpty = qty <= 0;
-  return (
-    <Card accent={isEmpty ? 'red' : isLow ? 'red' : 'yellow'}>
-      <View style={styles.rowHeader}>
-        <Text style={styles.rowTitle}>{row.ingredientName ?? row.ingredientId}</Text>
-        {isLow ? <StatusChip tone="amber" label={isEmpty ? 'EMPTY' : 'LOW'} /> : <StatusChip tone="green" label="OK" />}
-      </View>
-      <View style={styles.rowStats}>
-        <View>
-          <Text style={styles.statLabel}>In store</Text>
-          <Text style={styles.statValue}>{qty.toFixed(2)} {row.unit ?? ''}</Text>
-        </View>
-        <View>
-          <Text style={styles.statLabel}>Minimum</Text>
-          <Text style={styles.statValue}>{min > 0 ? `${min.toFixed(2)} ${row.unit ?? ''}` : '—'}</Text>
-        </View>
-      </View>
-    </Card>
-  );
-}
+export const InventoryScreen = memo(InventoryScreenImpl);
 
 const styles = StyleSheet.create({
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  summaryLabel: { fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  summaryValue: { fontSize: 32, fontWeight: '900', color: colors.text, marginTop: 4 },
-  warn: { color: colors.danger },
-  loading: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  title: { fontSize: 16, fontWeight: '800', color: colors.text },
-  body: { fontSize: 13, color: colors.muted, lineHeight: 20 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  rowTitle: { fontSize: 16, fontWeight: '800', color: colors.text, flex: 1 },
-  rowStats: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  statLabel: { fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' },
-  statValue: { fontSize: 18, fontWeight: '900', color: colors.text, marginTop: 2 },
+  rowSpread: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  rowTitle: { flex: 1 },
+  sep12: { height: 12 },
 });

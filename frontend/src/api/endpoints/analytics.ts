@@ -202,8 +202,33 @@ export interface DashboardResponse {
   generatedAt: string;
 }
 
+export interface LowStockItem {
+  ingredientId: string;
+  ingredientName?: string;
+  unit?: string;
+  category?: string;
+  currentStock: number;
+  minimumStock: number;
+  costPerUnit: number;
+  lineValue: number;
+  source: 'pool' | 'shelf';
+  storeId?: string | null;
+}
+
+export interface LowStockResponse {
+  items: LowStockItem[];
+  count: number;
+  totalValue: number;
+  storeId?: string | null;
+  sources: { pool: number; shelf: number };
+}
+
 export async function getDashboard(storeId?: string): Promise<DashboardResponse> {
   return apiClient.get(`/api/v1/analytics/dashboard${qs({ storeId })}`);
+}
+
+export async function getLowStock(storeId?: string, limit = 50): Promise<LowStockResponse> {
+  return apiClient.get(`/api/v1/analytics/low-stock${qs({ storeId, limit })}`);
 }
 
 export async function getRevenue(
@@ -246,13 +271,36 @@ export async function downloadReportCsv(
   range: DateRange = {},
   groupBy: 'day' | 'week' | 'month' | 'store' | 'food' = 'day',
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await apiClient.get(
+  // We bypass the standard interceptor pipeline here because the CSV endpoint
+  // streams a raw text/csv payload (not the {success,data} envelope) and we
+  // need access to the response headers for the filename.
+  const rawClient = apiClient;
+  const response = await rawClient.get<
+    Blob | ArrayBuffer | string,
+    { data: Blob; headers: Record<string, string> }
+  >(
     `/api/v1/analytics/export${qs({ type: 'csv', report, ...range, groupBy })}`,
     { responseType: 'blob' },
   );
-  const blob = response.data as Blob;
-  const cd = (response.headers as Record<string, string>)['content-disposition'] ?? '';
-  const match = cd.match(/filename="([^"]+)"/);
-  const filename = match?.[1] ?? `${report}.csv`;
+  let blob: Blob;
+  const payload = response.data;
+  if (typeof Blob !== 'undefined' && payload instanceof Blob) {
+    blob = payload;
+  } else if (typeof ArrayBuffer !== 'undefined' && payload instanceof ArrayBuffer) {
+    blob = new Blob([payload], { type: 'text/csv;charset=utf-8' });
+  } else if (typeof payload === 'string') {
+    blob = new Blob([payload], { type: 'text/csv;charset=utf-8' });
+  } else {
+    blob = new Blob([String(payload ?? '')], { type: 'text/csv;charset=utf-8' });
+  }
+
+  const headers = (response.headers ?? {}) as Record<string, string>;
+  const cd: string =
+    headers['content-disposition'] ??
+    headers['Content-Disposition'] ??
+    headers['CONTENT-DISPOSITION'] ??
+    '';
+  const match = cd.match(/filename="?([^";]+)"?/i);
+  const filename = match?.[1]?.trim() ?? `${report}-${new Date().toISOString().slice(0, 10)}.csv`;
   return { blob, filename };
 }

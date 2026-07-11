@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { memo, useCallback } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
@@ -15,18 +15,10 @@ import {
 } from '@/api/endpoints/attendance';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { AppText } from '@/lib/typography';
+import { formatClockTime as fmtClock } from '@/lib/dates';
 
-function fmtClock(iso?: string | null): string {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
-
-export function AttendanceScreen(): JSX.Element {
+function AttendanceScreenImpl(): JSX.Element {
   const { user } = useAuth();
   const qc = useQueryClient();
 
@@ -36,9 +28,10 @@ export function AttendanceScreen(): JSX.Element {
     refetchInterval: 60_000,
   });
 
-  const record: AttendanceRecord | null = todayQuery.data && (todayQuery.data as AttendanceRecord).status
-    ? (todayQuery.data as AttendanceRecord)
-    : null;
+  const record: AttendanceRecord | null =
+    todayQuery.data && (todayQuery.data as AttendanceRecord).status
+      ? (todayQuery.data as AttendanceRecord)
+      : null;
 
   const clockInMut = useMutation({
     mutationFn: () => clockIn({ storeId: user?.assignedStore ?? null }),
@@ -62,6 +55,9 @@ export function AttendanceScreen(): JSX.Element {
         ? clockOutMut.error.message
         : null;
 
+  const onClockIn = useCallback(() => clockInMut.mutate(), [clockInMut]);
+  const onClockOut = useCallback(() => clockOutMut.mutate(), [clockOutMut]);
+
   return (
     <AppScreen
       title="Attendance"
@@ -71,8 +67,9 @@ export function AttendanceScreen(): JSX.Element {
     >
       <Card>
         <View style={styles.row}>
-          <Text style={styles.label}>Status</Text>
+          <AppText variant="overline">Status</AppText>
           <StatusChip
+            tone="solid"
             label={
               !record
                 ? 'NOT STARTED'
@@ -82,58 +79,54 @@ export function AttendanceScreen(): JSX.Element {
                     ? 'ON SHIFT'
                     : (record.status ?? 'PRESENT')
             }
-            tone={
-              !record ? 'gray' : clockedOut ? 'green' : clockedIn ? 'amber' : 'gray'
-            }
           />
         </View>
         <View style={styles.timeGrid}>
           <View style={styles.timeCell}>
-            <Text style={styles.timeLabel}>Clock in</Text>
-            <Text style={styles.timeValue}>{fmtClock(record?.clockIn)}</Text>
+            <AppText variant="overline" faint>Clock in</AppText>
+            <AppText variant="metric" style={styles.metricTop}>{fmtClock(record?.clockIn)}</AppText>
           </View>
           <View style={styles.timeCell}>
-            <Text style={styles.timeLabel}>Clock out</Text>
-            <Text style={styles.timeValue}>{fmtClock(record?.clockOut)}</Text>
+            <AppText variant="overline" faint>Clock out</AppText>
+            <AppText variant="metric" style={styles.metricTop}>{fmtClock(record?.clockOut)}</AppText>
           </View>
         </View>
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        {errorMessage ? <AppText variant="body">{errorMessage}</AppText> : null}
         <View style={styles.actions}>
           <PrimaryButton
             label={clockedIn ? 'Already clocked in' : 'Clock in'}
-            onPress={() => clockInMut.mutate()}
+            onPress={onClockIn}
             disabled={clockedIn || clockInMut.isPending}
           />
           <PrimaryButton
             label={clockedOut ? 'Already clocked out' : 'Clock out'}
             variant="outline"
-            onPress={() => clockOutMut.mutate()}
+            onPress={onClockOut}
             disabled={!clockedIn || clockedOut || clockOutMut.isPending}
           />
         </View>
       </Card>
-      <Text style={styles.help}>
+      <AppText variant="caption" style={styles.help}>
         Your manager uses these times to track attendance. Pull down to refresh.
-      </Text>
+      </AppText>
     </AppScreen>
   );
 }
 
+export const AttendanceScreen = memo(AttendanceScreenImpl);
+
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: 13, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
-  timeGrid: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  timeGrid: { flexDirection: 'row', gap: 12 },
   timeCell: {
     flex: 1,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: colors.background,
-    borderWidth: 1,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    backgroundColor: colors.background,
   },
-  timeLabel: { fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' },
-  timeValue: { fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 4 },
-  actions: { gap: 10, marginTop: 4 },
-  error: { color: colors.danger, fontSize: 13, fontWeight: '700' },
-  help: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  actions: { gap: 10 },
+  metricTop: { marginTop: 6 },
+  help: { color: colors.text, textAlign: 'center', opacity: 0.6 },
 });

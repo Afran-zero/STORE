@@ -96,9 +96,11 @@ export function StoresPage(): JSX.Element {
   }
 
   async function onToggleStatus(store: Store) {
+    const wasActive = store.isActive ?? true;
+    const nextActive = !wasActive;
     try {
-      await statusMutation.mutateAsync({ id: store.id, isActive: !(store.isActive ?? true) });
-      toast.success(`${store.name} ${store.isActive ? 'closed' : 'opened'}`);
+      await statusMutation.mutateAsync({ id: store.id, isActive: nextActive });
+      toast.success(`${store.name} is now ${nextActive ? 'OPEN' : 'CLOSED'}`);
     } catch (error) {
       toast.error(error instanceof ApiException ? error.message : 'Status change failed');
     }
@@ -134,19 +136,14 @@ export function StoresPage(): JSX.Element {
           {data?.map((store) => (
             <Card
               key={store.id}
-              className="flex cursor-pointer flex-col gap-3 transition hover:shadow-md"
-              role="button"
-              tabIndex={0}
-              onClick={() => setViewing(store)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setViewing(store);
-                }
-              }}
-              aria-label={`Open ${store.name} detail`}
+              className="flex flex-col gap-3 transition hover:shadow-md"
             >
-              <div className="flex items-start justify-between">
+              <button
+                type="button"
+                onClick={() => setViewing(store)}
+                className="flex items-start justify-between rounded-2xl bg-transparent p-0 text-left transition hover:bg-zinc-50"
+                aria-label={`Open ${store.name} detail`}
+              >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-950 text-white">
                     <Boxes className="h-4 w-4" />
@@ -157,7 +154,7 @@ export function StoresPage(): JSX.Element {
                   </div>
                 </div>
                 <Badge>{store.isActive ?? true ? 'OPEN' : 'CLOSED'}</Badge>
-              </div>
+              </button>
               <div className="text-xs text-zinc-600">
                 {store.address ?? '—'}
                 {store.city ? `, ${store.city}` : ''}
@@ -168,7 +165,7 @@ export function StoresPage(): JSX.Element {
               <div className="mt-auto flex justify-end gap-1">
                 <Button
                   variant="ghost"
-                  onClick={(e) => { e.stopPropagation(); setViewing(store); }}
+                  onClick={() => setViewing(store)}
                   aria-label="View details"
                   title="View details"
                 >
@@ -176,15 +173,16 @@ export function StoresPage(): JSX.Element {
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={(e) => { e.stopPropagation(); onToggleStatus(store); }}
+                  onClick={() => onToggleStatus(store)}
                   aria-label="Toggle status"
                   title="Toggle status"
+                  disabled={statusMutation.isPending}
                 >
                   <Power className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={(e) => { e.stopPropagation(); openEdit(store); }}
+                  onClick={() => openEdit(store)}
                   aria-label="Edit"
                   title="Edit"
                 >
@@ -192,7 +190,7 @@ export function StoresPage(): JSX.Element {
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={(e) => { e.stopPropagation(); onDelete(store); }}
+                  onClick={() => onDelete(store)}
                   aria-label="Delete"
                   title="Delete"
                 >

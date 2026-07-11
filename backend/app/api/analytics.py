@@ -37,6 +37,23 @@ async def dashboard(
     return success_payload(await svc.dashboard(business_id=_bid(current_user), store_id=storeId))
 
 
+@router.get("/low-stock")
+async def low_stock(
+    storeId: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    current_user: CurrentUser = Depends(get_current_user),
+    svc: AnalyticsService = Depends(_service),
+):
+    """Merged low-stock view: master pool + per-store shelf, enriched with cost."""
+    return success_payload(
+        await svc.low_stock(
+            business_id=_bid(current_user),
+            store_id=storeId,
+            limit=limit,
+        )
+    )
+
+
 # -----------------------------------------------------------------------------
 # Revenue
 # -----------------------------------------------------------------------------

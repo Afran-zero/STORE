@@ -1,6 +1,15 @@
+import { memo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Text, View, StyleSheet } from 'react-native';
+import {
+  Home,
+  Package,
+  DollarSign,
+  Ticket as TicketIcon,
+  User,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { InventoryScreen } from '@/screens/inventory/InventoryScreen';
@@ -10,6 +19,7 @@ import { ProfileScreen } from '@/screens/profile/ProfileScreen';
 import { AttendanceScreen } from '@/screens/attendance/AttendanceScreen';
 import { RecipesScreen } from '@/screens/recipes/RecipesScreen';
 import { CloseShopScreen } from '@/screens/closeShop/CloseShopScreen';
+import { ReportsScreen } from '@/screens/reports/ReportsScreen';
 import { colors } from '@/lib/colors';
 
 export type MainTabParamList = {
@@ -26,6 +36,7 @@ export type HomeStackParamList = {
   Inventory: undefined;
   Sales: undefined;
   Recipes: undefined;
+  Reports: undefined;
   CloseShop: undefined;
 };
 
@@ -64,6 +75,7 @@ function HomeStackNav(): JSX.Element {
       <HomeStack.Screen name="Inventory" component={InventoryScreen} />
       <HomeStack.Screen name="Sales" component={SalesScreen} />
       <HomeStack.Screen name="Recipes" component={RecipesScreen} />
+      <HomeStack.Screen name="Reports" component={ReportsScreen} />
       <HomeStack.Screen name="CloseShop" component={CloseShopScreen} />
     </HomeStack.Navigator>
   );
@@ -103,28 +115,30 @@ function ProfileStackNav(): JSX.Element {
   );
 }
 
-function TabIcon({ glyph, focused }: { glyph: string; focused: boolean }): JSX.Element {
+interface TabIconProps {
+  Icon: LucideIcon;
+  focused: boolean;
+}
+
+const TabIcon = memo(function TabIcon({ Icon, focused }: TabIconProps): JSX.Element {
   return (
-    <View
-      style={[
-        styles.tabIconWrap,
-        focused ? styles.tabIconWrapActive : null,
-      ]}
-    >
-      <Text style={[styles.tabIconGlyph, focused ? styles.tabIconGlyphActive : null]}>
-        {glyph}
-      </Text>
+    <View style={[styles.tabIconWrap, focused ? styles.tabIconWrapActive : null]}>
+      <Icon
+        size={20}
+        strokeWidth={focused ? 2.2 : 1.6}
+        color={focused ? colors.accentInk : colors.text}
+      />
     </View>
   );
-}
+});
 
 export function MainTabs(): JSX.Element {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accentText,
-        tabBarInactiveTintColor: colors.muted,
+        tabBarActiveTintColor: colors.text,
+        tabBarInactiveTintColor: colors.textFaint,
         tabBarLabelStyle: styles.tabLabel,
         tabBarStyle: styles.tabBar,
         tabBarItemStyle: styles.tabItem,
@@ -135,7 +149,7 @@ export function MainTabs(): JSX.Element {
         component={HomeStackNav}
         options={{
           tabBarLabel: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="🏠" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon Icon={Home} focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -143,7 +157,7 @@ export function MainTabs(): JSX.Element {
         component={InventoryStackNav}
         options={{
           tabBarLabel: 'Stock',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="📦" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon Icon={Package} focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -151,7 +165,7 @@ export function MainTabs(): JSX.Element {
         component={SalesStackNav}
         options={{
           tabBarLabel: 'Sales',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="💵" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon Icon={DollarSign} focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -159,7 +173,7 @@ export function MainTabs(): JSX.Element {
         component={TicketsStackNav}
         options={{
           tabBarLabel: 'Tickets',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="🎫" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon Icon={TicketIcon} focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -167,7 +181,7 @@ export function MainTabs(): JSX.Element {
         component={ProfileStackNav}
         options={{
           tabBarLabel: 'Me',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="👤" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon Icon={User} focused={focused} />,
         }}
       />
     </Tab.Navigator>
@@ -177,27 +191,30 @@ export function MainTabs(): JSX.Element {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: colors.background,
-    borderTopWidth: 2,
-    borderTopColor: colors.borderStrong,
+    borderTopWidth: 1.5,
+    borderTopColor: colors.border,
     height: 72,
     paddingTop: 6,
     paddingBottom: 8,
   },
   tabItem: { paddingVertical: 2 },
-  tabLabel: { fontSize: 11, fontWeight: '800' },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
   tabIconWrap: {
     width: 44,
     height: 32,
-    borderRadius: 14,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   tabIconWrapActive: {
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1.5,
-    borderColor: colors.borderStrong,
+    backgroundColor: colors.accent,
+    borderColor: colors.border,
   },
-  tabIconGlyph: { fontSize: 18, fontWeight: '900', color: colors.muted },
-  tabIconGlyphActive: { color: colors.accentText },
 });

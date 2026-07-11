@@ -79,7 +79,14 @@ class AnalyticsService:
         low_stock_count = 0
         if store_id:
             low = await self.store_inventory.list_low_stock(business_id=business_id, store_id=store_id)
-            low_stock_count = len(low)
+            # Also count master-pool low-stock items so the dashboard reflects
+            # the business-wide picture, not just the per-store shelf.
+            pool_low = sum(
+                1 for ing in all_ingredients
+                if float(ing.get("minimumStock") or 0) > 0
+                and float(ing.get("currentStock") or 0) <= float(ing.get("minimumStock") or 0)
+            )
+            low_stock_count = len(low) + pool_low
         else:
             low_stock_count = sum(1 for ing in all_ingredients if float(ing.get("currentStock") or 0) <= float(ing.get("minimumStock") or 0))
 
@@ -311,6 +318,125 @@ class AnalyticsService:
                 "ingredientCount": len(per_ingredient),
             },
             "byIngredient": per_ingredient,
+        }
+
+    # ----- low-stock (master pool + per-store shelf) -----
+
+    async def low_stock(
+        self,
+        *,
+        business_id: str,
+        store_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        """Return ingredients that are below their minimum stock.
+
+        Two sources are merged so the dashboard reflects the real picture:
+
+        * **Master pool** (``ingredients`` collection): the shared pantry.
+          Items where ``currentStock <= minimumStock`` are always considered
+          low stock regardless of which store is selected, because replenishing
+          the pool is a business-wide concern.
+        * **Per-store shelf** (``store_inventory`` collection): when a
+          ``store_id`` is provided, also include rows where the shelf quantity
+          has dipped below that store's minimum.
+
+        Each row is enriched with the unit cost so the UI can render the dollar
+        value of the remaining stock without a second round-trip.
+        """
+        # 1. Master-pool low stock.
+        all_ingredients = await self.ingredients.list(business_id=business_id)
+        pool_low: List[Dict[str, Any]] = []
+        for ing in all_ingredients:
+            minimum = float(ing.get("minimumStock") or 0)
+            if minimum <= 0:
+                continue
+            current = float(ing.get("currentStock") or 0)
+            if current > minimum:
+                continue
+            cost = float(
+                ing.get("costPerUnit")
+                or ing.get("averageCost")
+                or ing.get("purchasePrice")
+                or 0
+            )
+            pool_low.append(
+                {
+                    "ingredientId": ing.get("id") or str(ing.get("_id", "")),
+                    "ingredientName": ing.get("name"),
+                    "unit": ing.get("unit"),
+                    "category": ing.get("category"),
+                    "currentStock": current,
+                    "minimumStock": minimum,
+                    "costPerUnit": cost,
+                    "lineValue": round(current * cost, 2),
+                    "source": "pool",
+                    "storeId": None,
+                }
+            )
+
+        # 2. Per-store shelf low stock (only when a store is in scope).
+        shelf_low: List[Dict[str, Any]] = []
+        if store_id:
+            rows = await self.store_inventory.list_low_stock(
+                business_id=business_id, store_id=store_id
+            )
+            for row in rows:
+                ing = row.get("ingredient") or {}
+                quantity = float(row.get("quantity") or 0)
+                minimum = float(row.get("minimumStock") or 0)
+                cost = float(
+                    ing.get("costPerUnit")
+                    or ing.get("averageCost")
+                    or row.get("costPerUnit")
+                    or 0
+                )
+                shelf_low.append(
+                    {
+                        "ingredientId": row.get("ingredientId")
+                        or ing.get("id")
+                        or str(row.get("_id", "")),
+                        "ingredientName": ing.get("name")
+                        or row.get("ingredientName")
+                        or row.get("ingredientId"),
+                        "unit": ing.get("unit") or row.get("unit"),
+                        "category": ing.get("category") or row.get("category"),
+                        "currentStock": quantity,
+                        "minimumStock": minimum,
+                        "costPerUnit": cost,
+                        "lineValue": round(quantity * cost, 2),
+                        "source": "shelf",
+                        "storeId": store_id,
+                    }
+                )
+
+        # De-duplicate by ingredient id (pool + shelf can both flag the same item
+        # when a store is selected); prefer the shelf value because it's more
+        # actionable for the active store.
+        merged: Dict[str, Dict[str, Any]] = {}
+        for item in pool_low:
+            merged[item["ingredientId"]] = item
+        for item in shelf_low:
+            merged[item["ingredientId"]] = item
+
+        items = sorted(
+            merged.values(),
+            key=lambda r: (
+                float(r.get("currentStock") or 0) / max(float(r.get("minimumStock") or 1), 1),
+                -(r.get("lineValue") or 0),
+            ),
+        )[:limit]
+
+        total_value = round(sum(float(i.get("lineValue") or 0) for i in items), 2)
+        return {
+            "items": items,
+            "count": len(items),
+            "totalValue": total_value,
+            "storeId": store_id,
+            "sources": {
+                "pool": len(pool_low),
+                "shelf": len(shelf_low),
+            },
         }
 
     # ----- employees -----

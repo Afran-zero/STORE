@@ -24,7 +24,9 @@ def serialize_value(value: Any) -> Any:
     if isinstance(value, ObjectId):
         return str(value)
     if isinstance(value, datetime):
-        return value
+        # Ensure ISO 8601 strings so the JSON response is portable and the
+        # frontend can render them with date-fns without extra parsing.
+        return value.isoformat()
     if isinstance(value, list):
         return [serialize_value(item) for item in value]
     if isinstance(value, dict):
@@ -93,6 +95,23 @@ async def delete_conversation(db: AsyncIOMotorDatabase, *, conversation_id: str,
     await get_conversation(db, conversation_id=conversation_id, business_id=business_id, user_id=user_id)
     await db["ai_conversations"].delete_one(_conversation_filter(conversation_id, business_id, user_id))
     await db["ai_messages"].delete_many(_message_filter(conversation_id))
+
+
+async def update_conversation(
+    db: AsyncIOMotorDatabase,
+    *,
+    conversation_id: str,
+    business_id: str,
+    user_id: str,
+    title: str | None = None,
+) -> dict[str, Any]:
+    conversation = await get_conversation(db, conversation_id=conversation_id, business_id=business_id, user_id=user_id)
+    updates: dict[str, Any] = {"updatedAt": _utcnow()}
+    if title is not None:
+        updates["title"] = title.strip()[:200] or conversation.get("title") or "Conversation"
+    await db["ai_conversations"].update_one(_conversation_filter(conversation_id, business_id, user_id), {"$set": updates})
+    conversation.update(updates)
+    return conversation
 
 
 async def append_message(

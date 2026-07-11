@@ -1,13 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Text, View, StyleSheet, ScrollView, RefreshControl, Pressable } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+  View,
+  FlatList,
+  ListRenderItem,
+} from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import {
+  Clock,
+  Package,
+  BookOpen,
+  Ticket as TicketIcon,
+  TrendingUp,
+  LogOut,
+} from 'lucide-react';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { StatusChip } from '@/components/StatusChip';
+import { SectionHeader, Metric, Divider } from '@/components/Section';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useAuth } from '@/context/AuthContext';
 import { getAttendanceToday, type AttendanceRecord } from '@/api/endpoints/attendance';
@@ -15,38 +33,116 @@ import {
   getStoreAllocationSummary,
   type Allocation,
 } from '@/api/endpoints/allocations';
-import { getStore, type Store } from '@/api/endpoints/stores';
+import { getStore } from '@/api/endpoints/stores';
 import { listSales, recordSale, type Sale } from '@/api/endpoints/sales';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { AppText } from '@/lib/typography';
+import { todayIso, formatClockTime } from '@/lib/dates';
+import { formatMoney } from '@/lib/format';
 
 type Nav = NativeStackNavigationProp<Record<string, undefined>>;
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function fmtClock(iso?: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
 
 interface PendingLine {
   foodItemId: string;
   foodName: string;
   unitPrice: number;
   quantity: number;
-  /** How many of this item the worker has already sold today — used to derive "remaining". */
   soldToday: number;
-  /** How many were ever allocated to this batch (for "remaining" math). */
   totalAllocated: number;
 }
 
-export function HomeScreen(): JSX.Element {
+const ActionTile = memo(function ActionTile({
+  glyph,
+  label,
+  caption,
+  onPress,
+}: {
+  glyph: React.ReactNode;
+  label: string;
+  caption: string;
+  onPress: () => void;
+}): JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}
+    >
+      <View style={styles.tileIcon}>{glyph}</View>
+      <AppText variant="heading">{label}</AppText>
+      <AppText variant="caption">{caption}</AppText>
+    </Pressable>
+  );
+});
+
+interface AllocationRowProps {
+  alloc: Allocation;
+  queued: number;
+  left: number;
+  sold: number;
+  total: number;
+  onInc: (id: string) => void;
+  onDec: (id: string) => void;
+}
+
+const AllocationRow = memo(function AllocationRow({
+  alloc,
+  queued,
+  left,
+  sold,
+  total,
+  onInc,
+  onDec,
+}: AllocationRowProps): JSX.Element {
+  const unitPrice = Number(alloc.unitPrice ?? 0);
+  return (
+    <Card>
+      <View style={styles.rowHeader}>
+        <View style={styles.rowTitle}>
+          <AppText variant="heading">{alloc.foodName ?? 'Item'}</AppText>
+          <AppText variant="caption" style={styles.captionTop}>
+            {formatMoney(unitPrice)} · {sold}/{total} sold · {left} left
+          </AppText>
+        </View>
+        {queued > 0 ? <StatusChip label={`Queued ${queued}`} tone="accent" /> : null}
+      </View>
+
+      <View style={styles.stepperRow}>
+        <Pressable
+          onPress={() => onDec(alloc.foodItemId)}
+          style={({ pressed }) => [
+            styles.stepperBtn,
+            queued === 0 ? styles.stepperDisabled : null,
+            pressed ? styles.pressed : null,
+          ]}
+          disabled={queued === 0}
+        >
+          <AppText variant="display" style={styles.stepperText}>−</AppText>
+        </Pressable>
+
+        <View style={styles.stepperDisplay}>
+          <AppText variant="metric">{queued}</AppText>
+          <AppText variant="caption">{formatMoney(queued * unitPrice)}</AppText>
+        </View>
+
+        <Pressable
+          onPress={() => onInc(alloc.foodItemId)}
+          style={({ pressed }) => [
+            styles.stepperBtn,
+            styles.stepperBtnAccent,
+            queued >= left ? styles.stepperDisabled : null,
+            pressed ? styles.pressed : null,
+          ]}
+          disabled={queued >= left}
+        >
+          <AppText variant="display" style={[styles.stepperText, styles.stepperTextInk]}>+</AppText>
+        </Pressable>
+      </View>
+    </Card>
+  );
+});
+
+function HomeScreenImpl(): JSX.Element {
   const { user } = useAuth();
   const nav = useNavigation<Nav>();
   const qc = useQueryClient();
@@ -77,7 +173,7 @@ export function HomeScreen(): JSX.Element {
     enabled: Boolean(storeId),
   });
 
-  const todays: Sale[] = useMemo(
+  const todays = useMemo<Sale[]>(
     () =>
       (salesQuery.data ?? []).filter((s) => {
         if (!s.createdAt) return false;
@@ -90,31 +186,27 @@ export function HomeScreen(): JSX.Element {
     [salesQuery.data, today],
   );
 
-  const totalSoldToday = todays.reduce((sum, s) => sum + Number(s.quantity ?? 0), 0);
-  const totalRevenueToday = todays.reduce(
-    (sum, s) => sum + Number(s.totalPrice ?? 0),
-    0,
+  const totalSoldToday = useMemo(
+    () => todays.reduce((s, x) => s + Number(x.quantity ?? 0), 0),
+    [todays],
+  );
+  const totalRevenueToday = useMemo(
+    () => todays.reduce((s, x) => s + Number(x.totalPrice ?? 0), 0),
+    [todays],
   );
 
-  const totals = allocationQuery.data?.totals;
-  // Lifetime allocated (sum of all statuses). Used as the "full breakdown" headline.
-  const totalAllocated = totals?.allocated ?? 0;
-  // The ACTIVE-only total — what a worker should treat as "what I can sell today".
-  const activeAllocated = totals?.activeAllocated ?? 0;
-  const reclaimedAllocated = totals?.reclaimedAllocated ?? 0;
-  const reversedAllocated = totals?.reversedAllocated ?? 0;
-  const remaining = totals?.remaining ?? 0;
-  const soldFromSummary = totals?.sold ?? 0;
-  const revenue = totals?.revenue ?? totalRevenueToday;
-
-  const attendance: AttendanceRecord | null = attendanceQuery.data?.status
-    ? (attendanceQuery.data as AttendanceRecord)
-    : null;
+  const attendance: AttendanceRecord | null =
+    attendanceQuery.data && (attendanceQuery.data as AttendanceRecord).status
+      ? (attendanceQuery.data as AttendanceRecord)
+      : null;
   const clockedIn = Boolean(attendance?.clockIn);
   const clockedOut = Boolean(attendance?.clockOut);
 
-  const activeAllocations: Allocation[] = useMemo(
-    () => (allocationQuery.data?.allocations ?? []).filter((a) => (a.status ?? '').toUpperCase() === 'ACTIVE'),
+  const activeAllocations = useMemo<Allocation[]>(
+    () =>
+      (allocationQuery.data?.allocations ?? []).filter(
+        (a) => (a.status ?? '').toUpperCase() === 'ACTIVE',
+      ),
     [allocationQuery.data],
   );
 
@@ -128,26 +220,28 @@ export function HomeScreen(): JSX.Element {
 
   const [pending, setPending] = useState<Record<string, PendingLine>>({});
 
-  // Reset pending whenever the underlying allocations or sales change in a way
-  // that would invalidate the in-flight counters (e.g. after refresh).
   useEffect(() => {
     setPending((current) => {
+      let changed = false;
       const next: Record<string, PendingLine> = {};
       for (const alloc of activeAllocations) {
         const id = alloc.foodItemId;
-        const sold = soldByFoodIdToday.get(id) ?? Number(alloc.sold ?? 0);
+        const soldFromServer = soldByFoodIdToday.get(id) ?? Number(alloc.sold ?? 0);
         const total = Number(alloc.quantity ?? 0);
         const previous = current[id];
+        if (!previous || previous.soldToday !== soldFromServer || previous.totalAllocated !== total) {
+          changed = true;
+        }
         next[id] = {
           foodItemId: id,
           foodName: alloc.foodName ?? 'Item',
           unitPrice: Number(alloc.unitPrice ?? 0),
           quantity: previous?.quantity ?? 0,
-          soldToday: sold,
+          soldToday: soldFromServer,
           totalAllocated: total,
         };
       }
-      return next;
+      return changed || Object.keys(current).length !== Object.keys(next).length ? next : current;
     });
   }, [activeAllocations, soldByFoodIdToday]);
 
@@ -172,7 +266,6 @@ export function HomeScreen(): JSX.Element {
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['allocations'] });
       qc.invalidateQueries({ queryKey: ['store-inventory'] });
-      // Reset pending counters
       setPending((current) => {
         const next: Record<string, PendingLine> = {};
         for (const id of Object.keys(current)) {
@@ -180,7 +273,7 @@ export function HomeScreen(): JSX.Element {
         }
         return next;
       });
-      Alert.alert('Sales recorded', `${total} unit(s) · $${totalPrice.toFixed(2)}`);
+      Alert.alert('Sales recorded', `${total} unit(s) · ${formatMoney(totalPrice)}`);
     },
     onError: (err) => {
       const message = err instanceof ApiException ? err.message : 'Could not record sales';
@@ -188,36 +281,44 @@ export function HomeScreen(): JSX.Element {
     },
   });
 
-  function incLine(id: string, by = 1): void {
+  const handleInc = useCallback((id: string) => {
     setPending((current) => {
       const line = current[id];
       if (!line) return current;
-      const next = line.quantity + by;
-      // Cap at remaining stock so a worker can't queue more than was allocated.
-      const remainingForItem = Math.max(line.totalAllocated - line.soldToday, 0);
-      if (next < 0) return current;
-      if (next > remainingForItem) {
-        Alert.alert('No more stock', `Only ${remainingForItem} of "${line.foodName}" left today.`);
+      const remaining = Math.max(line.totalAllocated - line.soldToday - line.quantity, 0);
+      if (remaining <= 0) {
+        Alert.alert(
+          'No more stock',
+          `Only ${remaining} more of "${line.foodName}" can be queued today.`,
+        );
         return current;
       }
-      return { ...current, [id]: { ...line, quantity: next } };
+      return { ...current, [id]: { ...line, quantity: line.quantity + 1 } };
     });
-  }
+  }, []);
 
-  function setLine(id: string, qty: number): void {
+  const handleDec = useCallback((id: string) => {
     setPending((current) => {
       const line = current[id];
-      if (!line) return current;
-      const safe = Math.max(0, Math.min(qty, Math.max(line.totalAllocated - line.soldToday, 0)));
-      return { ...current, [id]: { ...line, quantity: safe } };
+      if (!line || line.quantity <= 0) return current;
+      return { ...current, [id]: { ...line, quantity: line.quantity - 1 } };
     });
-  }
+  }, []);
 
-  const pendingLines = Object.values(pending).filter((l) => l.quantity > 0);
-  const pendingUnits = pendingLines.reduce((s, l) => s + l.quantity, 0);
-  const pendingTotal = pendingLines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  const pendingLines = useMemo(
+    () => Object.values(pending).filter((l) => l.quantity > 0),
+    [pending],
+  );
+  const pendingUnits = useMemo(
+    () => pendingLines.reduce((s, l) => s + l.quantity, 0),
+    [pendingLines],
+  );
+  const pendingTotal = useMemo(
+    () => pendingLines.reduce((s, l) => s + l.quantity * l.unitPrice, 0),
+    [pendingLines],
+  );
 
-  function commit(): void {
+  const commit = useCallback((): void => {
     if (pendingLines.length === 0) return;
     if (!clockedIn) {
       Alert.alert('Clock in first', 'You need to clock in before recording sales.');
@@ -225,13 +326,13 @@ export function HomeScreen(): JSX.Element {
       return;
     }
     commitMutation.mutate(pendingLines);
-  }
+  }, [pendingLines, clockedIn, commitMutation, nav]);
 
   const onRefresh = useCallback(() => {
-    attendanceQuery.refetch();
-    storeQuery.refetch();
-    allocationQuery.refetch();
-    salesQuery.refetch();
+    void attendanceQuery.refetch();
+    void storeQuery.refetch();
+    void allocationQuery.refetch();
+    void salesQuery.refetch();
   }, [attendanceQuery, storeQuery, allocationQuery, salesQuery]);
 
   const isFetching =
@@ -240,45 +341,69 @@ export function HomeScreen(): JSX.Element {
     allocationQuery.isFetching ||
     salesQuery.isFetching;
 
-  const greetHour = new Date().getHours();
-  const greeting =
-    greetHour < 12 ? 'Good morning' : greetHour < 18 ? 'Good afternoon' : 'Good evening';
+  const totals = allocationQuery.data?.totals;
+  const activeAllocated = totals?.activeAllocated ?? 0;
+  const remaining = totals?.remaining ?? 0;
+  const soldFromSummary = totals?.sold ?? 0;
 
-  const nextAction =
-    !clockedIn
-      ? 'Clock in to start your shift'
-      : clockedOut
-        ? 'Shift done — review today'
-        : activeAllocated === 0
-          ? 'No active allocation today'
-          : `Sell ${activeAllocations[0]?.foodName ?? 'an item'} +`;
+  const greeting = useMemo(() => {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  }, []);
+  const firstName = useMemo(() => (user?.name ?? 'there').split(' ')[0], [user?.name]);
+  const subtitleDate = useMemo(() => new Date().toDateString(), []);
+  const subtitle = `${subtitleDate} · ${storeQuery.data?.name ?? 'Your store'}`;
+
+  const renderAllocation: ListRenderItem<Allocation> = useCallback(
+    ({ item }) => {
+      const line = pending[item.foodItemId];
+      const sold = line?.soldToday ?? 0;
+      const total = line?.totalAllocated ?? 0;
+      const queued = line?.quantity ?? 0;
+      const left = Math.max(total - sold - queued, 0);
+      return (
+        <AllocationRow
+          alloc={item}
+          queued={queued}
+          left={left}
+          sold={sold}
+          total={total}
+          onInc={handleInc}
+          onDec={handleDec}
+        />
+      );
+    },
+    [pending, handleInc, handleDec],
+  );
+
+  const keyExtractor = useCallback((a: Allocation) => a.id, []);
 
   return (
     <AppScreen
-      title={`${greeting}, ${user?.name?.split(' ')[0] ?? 'there'}`}
-      subtitle={`${new Date().toDateString()} · ${storeQuery.data?.name ?? 'Your store'}`}
+      title={`${greeting}, ${firstName}`}
+      subtitle={subtitle}
       onRefresh={onRefresh}
       refreshing={isFetching}
       scrollable={false}
     >
       <ScrollView
-        contentContainerStyle={{ gap: 18, paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={onRefresh} tintColor={colors.accent} />}
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isFetching} onRefresh={onRefresh} tintColor={colors.text} />
+        }
       >
         <OfflineBanner />
 
         <View style={styles.kpiRow}>
           <Pressable
             onPress={() => nav.navigate('Attendance')}
-            style={({ pressed }) => [
-              styles.kpiTile,
-              styles.kpiTileYellow,
-              pressed ? styles.pressed : null,
-            ]}
+            style={({ pressed }) => [styles.kpiTile, styles.kpiAccent, pressed ? styles.pressed : null]}
           >
-            <Text style={styles.kpiLabel}>Clock status</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <AppText variant="overline">Clock status</AppText>
+            <View style={styles.chipTop}>
               <StatusChip
+                tone="solid"
                 label={
                   !attendance
                     ? 'NOT STARTED'
@@ -288,206 +413,127 @@ export function HomeScreen(): JSX.Element {
                         ? 'ON SHIFT'
                         : (attendance.status ?? 'PRESENT')
                 }
-                tone={!attendance ? 'gray' : clockedOut ? 'green' : clockedIn ? 'amber' : 'gray'}
               />
             </View>
             <View style={styles.kpiTimeRow}>
               <View>
-                <Text style={styles.kpiSubLabel}>In</Text>
-                <Text style={styles.kpiSubValue}>{fmtClock(attendance?.clockIn)}</Text>
+                <AppText variant="overline" faint>In</AppText>
+                <AppText variant="heading">{formatClockTime(attendance?.clockIn)}</AppText>
               </View>
               <View>
-                <Text style={styles.kpiSubLabel}>Out</Text>
-                <Text style={styles.kpiSubValue}>{fmtClock(attendance?.clockOut)}</Text>
+                <AppText variant="overline" faint>Out</AppText>
+                <AppText variant="heading">{formatClockTime(attendance?.clockOut)}</AppText>
               </View>
             </View>
           </Pressable>
 
-          <Pressable
-            onPress={() => nav.navigate('Inventory')}
-            style={({ pressed }) => [
-              styles.kpiTile,
-              styles.kpiTileSoft,
-              pressed ? styles.pressed : null,
-            ]}
-          >
-            <Text style={styles.kpiLabel}>Today’s allocation</Text>
-            <Text style={styles.kpiValue}>{activeAllocated}</Text>
-            <Text style={styles.kpiCaption}>units active · {activeAllocations.length} batch(es)</Text>
+          <Card>
+            <AppText variant="overline">Today’s allocation</AppText>
+            <AppText variant="metric" style={styles.metricTop}>
+              {activeAllocated}
+            </AppText>
+            <AppText variant="caption">{activeAllocations.length} batch(es)</AppText>
             <View style={styles.kpiTimeRow}>
               <View>
-                <Text style={styles.kpiSubLabel}>Sold</Text>
-                <Text style={styles.kpiSubValue}>{soldFromSummary || totalSoldToday}</Text>
+                <AppText variant="overline" faint>Sold</AppText>
+                <AppText variant="heading">{soldFromSummary || totalSoldToday}</AppText>
               </View>
               <View>
-                <Text style={styles.kpiSubLabel}>Left</Text>
-                <Text style={styles.kpiSubValue}>{remaining}</Text>
+                <AppText variant="overline" faint>Left</AppText>
+                <AppText variant="heading">{remaining}</AppText>
               </View>
             </View>
-            {(reclaimedAllocated > 0 || reversedAllocated > 0) ? (
-              <Text style={styles.kpiBreakdown}>
-                {reclaimedAllocated > 0 ? `${reclaimedAllocated} reclaimed` : ''}
-                {reclaimedAllocated > 0 && reversedAllocated > 0 ? ' · ' : ''}
-                {reversedAllocated > 0 ? `${reversedAllocated} reversed` : ''}
-                {' · '}
-                {totalAllocated} lifetime
-              </Text>
-            ) : null}
-          </Pressable>
+          </Card>
         </View>
 
-        <Card>
-          <Text style={styles.sectionLabel}>Next step</Text>
-          <Text style={styles.nextAction}>{nextAction}</Text>
-          {clockedIn && !clockedOut && activeAllocations.length > 0 ? (
-            <Text style={styles.helpText}>
-              Tap a +1 chip to queue a sale, then hit “Commit sales” below to record them all at once.
-            </Text>
-          ) : null}
+        <Card filled>
+          <AppText variant="overline">Next step</AppText>
+          <AppText variant="heading" style={styles.headingTop}>
+            {!clockedIn
+              ? 'Clock in to start your shift'
+              : clockedOut
+                ? 'Shift done — review today'
+                : activeAllocated === 0
+                  ? 'No active allocation today'
+                  : `Sell ${activeAllocations[0]?.foodName ?? 'an item'}`}
+          </AppText>
         </Card>
 
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionLabel}>Sell · today’s allocated items</Text>
-          <Pressable onPress={() => nav.navigate('Sales')} hitSlop={8}>
-            <Text style={styles.linkText}>More sales →</Text>
-          </Pressable>
-        </View>
+        <SectionHeader
+          label="Today’s allocated items"
+          action={{ label: 'Sales →', onPress: () => nav.navigate('Sales') }}
+        />
 
         {allocationQuery.isLoading ? (
           <Card>
-            <Text style={styles.loadingText}>Loading today’s allocation…</Text>
+            <AppText variant="caption">Loading today’s allocation…</AppText>
           </Card>
         ) : activeAllocations.length === 0 ? (
           <Card>
-            <Text style={styles.emptyTitle}>Nothing to sell yet</Text>
-            <Text style={styles.emptyBody}>
-              Your admin hasn’t allocated anything for today. Once they do, each menu item will
-              appear here with its own +/− stepper.
-            </Text>
+            <AppText variant="heading">Nothing to sell yet</AppText>
+            <AppText variant="body" faint>
+              Your admin hasn’t allocated anything for today. Once they do, each item will appear
+              here with its own stepper.
+            </AppText>
           </Card>
         ) : (
-          <View style={styles.itemList}>
-            {activeAllocations.map((alloc) => {
-              const id = alloc.foodItemId;
-              const line = pending[id];
-              const sold = line?.soldToday ?? 0;
-              const total = line?.totalAllocated ?? 0;
-              const left = Math.max(total - sold, 0);
-              const queued = line?.quantity ?? 0;
-              return (
-                <Card key={alloc.id}>
-                  <View style={styles.itemHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.itemName}>{alloc.foodName ?? 'Item'}</Text>
-                      <Text style={styles.itemMeta}>
-                        ${Number(alloc.unitPrice ?? 0).toFixed(2)} · {sold}/{total} sold · {left} left
-                      </Text>
-                    </View>
-                    {queued > 0 ? (
-                      <StatusChip tone="amber" label={`Queued ${queued}`} />
-                    ) : null}
-                  </View>
-
-                  <View style={styles.stepperRow}>
-                    <Pressable
-                      onPress={() => incLine(id, -1)}
-                      style={({ pressed }) => [
-                        styles.stepperBtn,
-                        styles.stepperBtnMinus,
-                        queued === 0 ? styles.stepperDisabled : null,
-                        pressed ? styles.pressed : null,
-                      ]}
-                      disabled={queued === 0}
-                    >
-                      <Text style={styles.stepperBtnText}>−</Text>
-                    </Pressable>
-                    <View style={styles.stepperDisplay}>
-                      <Text style={styles.stepperNumber}>{queued}</Text>
-                      <Text style={styles.stepperCaption}>
-                        ${(queued * Number(alloc.unitPrice ?? 0)).toFixed(2)}
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={() => incLine(id, 1)}
-                      style={({ pressed }) => [
-                        styles.stepperBtn,
-                        styles.stepperBtnPlus,
-                        queued >= left ? styles.stepperDisabled : null,
-                        pressed ? styles.pressed : null,
-                      ]}
-                      disabled={queued >= left}
-                    >
-                      <Text style={[styles.stepperBtnText, styles.stepperBtnTextAccent]}>+</Text>
-                    </Pressable>
-                  </View>
-
-                  <View style={styles.itemFooter}>
-                    <Pressable onPress={() => setLine(id, Math.min(left, left))} hitSlop={6}>
-                      <Text style={styles.linkText}>Max ({left})</Text>
-                    </Pressable>
-                    <Pressable onPress={() => setLine(id, 0)} hitSlop={6}>
-                      <Text style={styles.linkText}>Clear</Text>
-                    </Pressable>
-                  </View>
-                </Card>
-              );
-            })}
-          </View>
+          <FlatList
+            data={activeAllocations}
+            keyExtractor={keyExtractor}
+            renderItem={renderAllocation}
+            scrollEnabled={false}
+            ItemSeparatorComponent={Separator}
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            removeClippedSubviews
+          />
         )}
 
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionLabel}>Quick actions</Text>
-        </View>
+        <SectionHeader label="Quick actions" />
+
         <View style={styles.actionsRow}>
-          <Pressable
+          <ActionTile
+            glyph={<Clock size={22} strokeWidth={1.5} />}
+            label="Attendance"
+            caption="Clock in / out"
             onPress={() => nav.navigate('Attendance')}
-            style={({ pressed }) => [styles.actionTile, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.actionIcon}>⏱</Text>
-            <Text style={styles.actionLabel}>Attendance</Text>
-            <Text style={styles.actionCaption}>Clock in / out</Text>
-          </Pressable>
-          <Pressable
+          />
+          <ActionTile
+            glyph={<Package size={22} strokeWidth={1.5} />}
+            label="Stock"
+            caption="Per-store inventory"
             onPress={() => nav.navigate('Inventory')}
-            style={({ pressed }) => [styles.actionTile, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.actionIcon}>📦</Text>
-            <Text style={styles.actionLabel}>Stock</Text>
-            <Text style={styles.actionCaption}>Per-store inventory</Text>
-          </Pressable>
-          <Pressable
+          />
+          <ActionTile
+            glyph={<BookOpen size={22} strokeWidth={1.5} />}
+            label="Recipes"
+            caption="Prep reference"
             onPress={() => nav.navigate('Recipes')}
-            style={({ pressed }) => [styles.actionTile, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.actionIcon}>📖</Text>
-            <Text style={styles.actionLabel}>Recipes</Text>
-            <Text style={styles.actionCaption}>Prep reference</Text>
-          </Pressable>
-          <Pressable
+          />
+          <ActionTile
+            glyph={<TicketIcon size={22} strokeWidth={1.5} />}
+            label="Tickets"
+            caption="Tell admin"
             onPress={() => nav.navigate('Tickets')}
-            style={({ pressed }) => [styles.actionTile, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.actionIcon}>🎫</Text>
-            <Text style={styles.actionLabel}>Tickets</Text>
-            <Text style={styles.actionCaption}>Tell admin</Text>
-          </Pressable>
+          />
+          <ActionTile
+            glyph={<TrendingUp size={22} strokeWidth={1.5} />}
+            label="Reports"
+            caption="Today & weekly"
+            onPress={() => nav.navigate('Reports')}
+          />
         </View>
 
         <Card>
-          <Text style={styles.sectionLabel}>Today so far</Text>
+          <SectionHeader
+            label="Today so far"
+            action={{ label: 'Reports →', onPress: () => nav.navigate('Reports') }}
+          />
           <View style={styles.statRow}>
-            <View>
-              <Text style={styles.statLabel}>Sales</Text>
-              <Text style={styles.statValue}>{todays.length}</Text>
-            </View>
-            <View>
-              <Text style={styles.statLabel}>Units sold</Text>
-              <Text style={styles.statValue}>{totalSoldToday}</Text>
-            </View>
-            <View>
-              <Text style={styles.statLabel}>Revenue</Text>
-              <Text style={styles.statValue}>${totalRevenueToday.toFixed(2)}</Text>
-            </View>
+            <Metric label="Sales" value={String(todays.length)} />
+            <Metric label="Units sold" value={String(totalSoldToday)} />
+            <Metric label="Revenue" value={formatMoney(totalRevenueToday)} />
           </View>
         </Card>
 
@@ -495,22 +541,25 @@ export function HomeScreen(): JSX.Element {
           onPress={() => nav.navigate('CloseShop')}
           style={({ pressed }) => [styles.closeCta, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.closeCtaLabel}>Close shop for the day</Text>
-          <Text style={styles.closeCtaCaption}>
+          <View style={styles.closeRow}>
+            <LogOut size={20} strokeWidth={1.5} />
+            <AppText variant="heading">Close shop for the day</AppText>
+          </View>
+          <AppText variant="caption" style={styles.captionTop}>
             End your shift, confirm totals, and review what’s left.
-          </Text>
+          </AppText>
         </Pressable>
       </ScrollView>
 
       {pendingUnits > 0 ? (
         <View style={styles.commitBar} pointerEvents="box-none">
           <View style={styles.commitBarInner}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.commitTotal}>{pendingUnits} pending sale(s)</Text>
-              <Text style={styles.commitTotalCaption}>${pendingTotal.toFixed(2)} · ready to commit</Text>
+            <View style={styles.commitText}>
+              <AppText variant="heading">{pendingUnits} pending sale(s)</AppText>
+              <AppText variant="caption">{formatMoney(pendingTotal)} · ready to commit</AppText>
             </View>
             <PrimaryButton
-              label={commitMutation.isPending ? 'Saving…' : 'Commit sales'}
+              label={commitMutation.isPending ? 'Saving…' : 'Commit'}
               onPress={commit}
               disabled={commitMutation.isPending || !clockedIn}
             />
@@ -521,98 +570,105 @@ export function HomeScreen(): JSX.Element {
   );
 }
 
+export const HomeScreen = memo(HomeScreenImpl);
+
+function Separator(): JSX.Element {
+  return <View style={styles.sep} />;
+}
+
 const styles = StyleSheet.create({
+  scrollBody: { gap: 20, paddingBottom: 140 },
+  sep: { height: 16 },
+
+  // KPIs
   kpiRow: { flexDirection: 'row', gap: 14 },
   kpiTile: {
     flex: 1,
     padding: 18,
-    borderRadius: 24,
-    borderWidth: 2,
-    gap: 6,
-  },
-  kpiTileYellow: { backgroundColor: colors.accent, borderColor: colors.accent },
-  kpiTileSoft: { backgroundColor: colors.surface, borderColor: colors.borderStrong },
-  kpiLabel: { fontSize: 12, fontWeight: '900', color: colors.text, textTransform: 'uppercase', letterSpacing: 0.6 },
-  kpiValue: { fontSize: 38, fontWeight: '900', color: colors.text, marginTop: 4 },
-  kpiCaption: { fontSize: 12, fontWeight: '700', color: colors.muted },
-  kpiTimeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-  kpiSubLabel: { fontSize: 10, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  kpiSubValue: { fontSize: 18, fontWeight: '900', color: colors.text, marginTop: 4 },
-  kpiBreakdown: { fontSize: 11, fontWeight: '800', color: colors.muted, marginTop: 8 },
-  pressed: { opacity: 0.85 },
-
-  sectionLabel: { fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sectionHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  linkText: { fontSize: 12, fontWeight: '800', color: colors.accentText, backgroundColor: colors.accentSoft, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
-  nextAction: { fontSize: 20, fontWeight: '900', color: colors.text, marginTop: 6 },
-  helpText: { fontSize: 12, color: colors.muted, marginTop: 6, fontWeight: '600', lineHeight: 18 },
-
-  loadingText: { color: colors.muted, fontSize: 13, fontWeight: '700' },
-  emptyTitle: { fontSize: 16, fontWeight: '900', color: colors.text },
-  emptyBody: { fontSize: 13, color: colors.muted, marginTop: 6, lineHeight: 20 },
-
-  itemList: { gap: 14 },
-  itemHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  itemName: { fontSize: 18, fontWeight: '900', color: colors.text },
-  itemMeta: { fontSize: 12, fontWeight: '700', color: colors.muted, marginTop: 4 },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
-  stepperBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperBtnMinus: { backgroundColor: colors.background, borderColor: colors.borderStrong },
-  stepperBtnPlus: { backgroundColor: colors.accent, borderColor: colors.accent },
-  stepperBtnText: { fontSize: 28, fontWeight: '900', color: colors.text },
-  stepperBtnTextAccent: { color: colors.accentText },
-  stepperDisabled: { opacity: 0.4 },
-  stepperDisplay: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    backgroundColor: colors.background,
     borderRadius: 16,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    backgroundColor: colors.background,
+    gap: 10,
   },
-  stepperNumber: { fontSize: 28, fontWeight: '900', color: colors.text },
-  stepperCaption: { fontSize: 11, fontWeight: '800', color: colors.muted, marginTop: 2 },
-  itemFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
+  kpiAccent: { backgroundColor: colors.accent },
+  kpiTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
 
+  // Quick actions
   actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  actionTile: {
+  tile: {
     flexBasis: '47%',
     flexGrow: 1,
     padding: 18,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
     backgroundColor: colors.background,
-    alignItems: 'flex-start',
-    gap: 6,
+    gap: 4,
   },
-  actionIcon: { fontSize: 28, fontWeight: '900', color: colors.text },
-  actionLabel: { fontSize: 16, fontWeight: '900', color: colors.text },
-  actionCaption: { fontSize: 11, fontWeight: '700', color: colors.muted },
+  tileIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
 
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-  statLabel: { fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  statValue: { fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 4 },
+  // Stepper
+  rowHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  rowTitle: { flex: 1 },
+  captionTop: { marginTop: 4 },
+  metricTop: { marginTop: 6 },
+  headingTop: { marginTop: 6 },
+  chipTop: { marginTop: 10 },
+  commitText: { flex: 1 },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  stepperBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnAccent: { backgroundColor: colors.accent },
+  stepperText: { color: colors.text, fontWeight: '900' },
+  stepperTextInk: { color: colors.accentInk },
+  stepperDisabled: { opacity: 0.35 },
+  stepperDisplay: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
 
+  // Today so far
+  statRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+
+  // Close CTA
   closeCta: {
     padding: 20,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border,
     backgroundColor: colors.background,
-    gap: 6,
+    gap: 4,
   },
-  closeCtaLabel: { fontSize: 17, fontWeight: '900', color: colors.text },
-  closeCtaCaption: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+  closeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 
+  // Commit bar
   commitBar: {
     position: 'absolute',
     left: 0,
@@ -620,14 +676,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 16,
     backgroundColor: colors.background,
-    borderTopWidth: 2,
-    borderTopColor: colors.borderStrong,
+    borderTopWidth: 1.5,
+    borderTopColor: colors.border,
   },
   commitBarInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
   },
-  commitTotal: { fontSize: 16, fontWeight: '900', color: colors.text },
-  commitTotalCaption: { fontSize: 12, fontWeight: '700', color: colors.muted, marginTop: 2 },
+
+  pressed: { backgroundColor: colors.pressed },
 });

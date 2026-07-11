@@ -1,7 +1,30 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(xargs grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(.venv/bin/python -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in [''app/api/ai.py'', ''app/services/ai_service.py'', ''app/ai/memory.py'', ''app/ai/prompts.py'', ''app/schemas/ai.py'', ''app/services/mcp_service.py'']]; print\\(''OK''\\)\")",
+      "Bash(python3 -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in [''/g/STORE/backend/app/api/ai.py'', ''/g/STORE/backend/app/services/ai_service.py'', ''/g/STORE/backend/app/ai/memory.py'', ''/g/STORE/backend/app/ai/prompts.py'', ''/g/STORE/backend/app/schemas/ai.py'', ''/g/STORE/backend/app/services/mcp_service.py'']]; print\\(''OK''\\)\")",
+      "Bash(/g/STORE/backend/.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in ['app/api/ai.py', 'app/services/ai_service.py', 'app/ai/memory.py', 'app/ai/prompts.py', 'app/schemas/ai.py', 'app/services/mcp_service.py']]; print\\('OK'\\)\")",
+      "Bash(/g/STORE/backend/.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in [''app/api/ai.py'', ''app/services/ai_service.py'', ''app/ai/memory.py'', ''app/ai/prompts.py'', ''app/schemas/ai.py'', ''app/services/mcp_service.py'']]; print\\(''OK''\\)\")",
+      "Bash(npx vite:*)",
+      "Bash(/g/STORE/backend/.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in [''app/api/ai.py'', ''app/services/ai_service.py'', ''app/ai/memory.py'', ''app/ai/prompts.py'', ''app/schemas/ai.py'', ''app/services/mcp_service.py'', ''app/services/store_inventory_service.py'']]; print\\(''OK''\\)\")",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(grep -l \"^export function \" /g/STORE/frontend/src/pages/*.tsx)",
+      "Bash(grep:*)",
+      "Bash(/g/STORE/backend/.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in [''app/api/analytics.py'', ''app/services/analytics_service.py'', ''app/services/ai_service.py'', ''app/ai/prompts.py'', ''app/services/store_inventory_service.py'']]; print\\(''OK''\\)\")",
+      "Bash(/g/STORE/backend/.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in [''app/api/ai.py'', ''app/services/ai_service.py'', ''app/ai/memory.py'']]; print\\(''OK''\\)\")",
+      "Bash(npm install:*)",
+      "Bash(grep -n \"import.*from ''''react-native''''\" src/screens/home/HomeScreen.tsx src/screens/profile/ProfileScreen.tsx src/components/AppScreen.tsx)",
+      "WebFetch(domain:docs.expo.dev)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm view:*)",
+      "Bash(npm cache:*)",
+      "Bash(npm ls:*)"
     ]
   }
 }

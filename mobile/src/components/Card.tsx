@@ -1,28 +1,40 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View, StyleSheet, type ViewStyle } from 'react-native';
 
 import { colors } from '@/lib/colors';
 
-export function Card({
-  children,
-  style,
-  accent,
-}: {
+interface CardProps {
   children: ReactNode;
   style?: ViewStyle;
-  accent?: 'yellow' | 'red' | 'green';
-}): JSX.Element {
-  const accentColor =
-    accent === 'red' ? '#fecaca' : accent === 'green' ? '#bbf7d0' : colors.border;
-  return <View style={[styles.card, { borderColor: accentColor }, style]}>{children}</View>;
+  filled?: boolean;
 }
+
+function CardImpl({ children, style, filled }: CardProps): JSX.Element {
+  return (
+    <View
+      style={[
+        styles.card,
+        filled ? styles.cardFilled : null,
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+export const Card = memo(CardImpl);
 
 const styles = StyleSheet.create({
   card: {
     padding: 18,
-    borderRadius: 22,
-    borderWidth: 1,
-    backgroundColor: colors.surface,
-    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    gap: 10,
+  },
+  cardFilled: {
+    backgroundColor: colors.accent,
   },
 });

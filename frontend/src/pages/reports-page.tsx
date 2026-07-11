@@ -52,13 +52,20 @@ export function ReportsPage(): JSX.Element {
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
+      a.rel = 'noopener';
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Give the browser a tick to start the download before revoking the URL.
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
       toast.success(`${report} report downloaded`);
     } catch (error) {
-      toast.error(error instanceof ApiException ? error.message : 'Export failed');
+      const message = error instanceof ApiException ? error.message : 'Export failed';
+      toast.error(message);
+      console.error('[ExportCSV] failed', error);
     } finally {
       setExporting(null);
     }

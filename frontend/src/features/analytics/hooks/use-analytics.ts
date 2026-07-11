@@ -4,11 +4,13 @@ import {
   getEmployeesAnalytics,
   getFoodAnalytics,
   getInventoryAnalytics,
+  getLowStock,
   getProfit,
   getRevenue,
   getStoreSummary,
   getStoresComparison,
   type DateRange,
+  type LowStockResponse,
 } from '@/api/endpoints/analytics';
 import { analyticsKeys } from '@/api/queryKeys';
 
@@ -18,6 +20,14 @@ export function useDashboard(storeId?: string) {
   return useQuery({
     queryKey: analyticsKeys.dashboard(storeId),
     queryFn: () => getDashboard(storeId),
+  });
+}
+
+export function useLowStockAnalytics(storeId?: string, limit = 50) {
+  return useQuery<LowStockResponse>({
+    queryKey: [...analyticsKeys.dashboard(storeId ?? ''), 'low-stock', limit] as const,
+    queryFn: () => getLowStock(storeId, limit),
+    refetchInterval: 30_000,
   });
 }
 

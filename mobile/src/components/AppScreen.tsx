@@ -1,43 +1,54 @@
-import type { ReactNode } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { memo, type ReactNode } from 'react';
+import { SafeAreaView, View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 
 import { colors } from '@/lib/colors';
+import { AppText } from '@/lib/typography';
 
 interface AppScreenProps {
   title: string;
   subtitle?: string;
+  right?: ReactNode;
   children?: ReactNode;
   scrollable?: boolean;
   onRefresh?: () => void;
   refreshing?: boolean;
 }
 
-export function AppScreen({
+function AppScreenImpl({
   title,
   subtitle,
+  right,
   children,
   scrollable = true,
   onRefresh,
   refreshing,
 }: AppScreenProps): JSX.Element {
-  const body = (
-    <View style={styles.body}>
-      {children}
-    </View>
-  );
+  const body = <View style={styles.body}>{children}</View>;
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <View style={styles.titleBlock}>
+            <AppText variant="title">{title}</AppText>
+            {subtitle ? (
+              <AppText variant="caption" style={styles.subtitle}>
+                {subtitle}
+              </AppText>
+            ) : null}
+          </View>
+          {right}
         </View>
         {scrollable ? (
           <ScrollView
             contentContainerStyle={styles.scrollBody}
+            showsVerticalScrollIndicator={false}
             refreshControl={
               onRefresh ? (
-                <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.accent} />
+                <RefreshControl
+                  refreshing={Boolean(refreshing)}
+                  onRefresh={onRefresh}
+                  tintColor={colors.text}
+                />
               ) : undefined
             }
           >
@@ -51,12 +62,26 @@ export function AppScreen({
   );
 }
 
+export const AppScreen = memo(AppScreenImpl);
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  container: { flex: 1, padding: 16, backgroundColor: colors.background },
-  header: { gap: 6, marginBottom: 14, paddingTop: 6 },
-  title: { fontSize: 26, lineHeight: 32, fontWeight: '900', color: colors.text },
-  subtitle: { fontSize: 14, lineHeight: 20, color: colors.muted },
-  body: { gap: 14 },
-  scrollBody: { gap: 14, paddingBottom: 32 },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    paddingBottom: 22,
+    gap: 12,
+  },
+  titleBlock: { flex: 1 },
+  subtitle: { marginTop: 4 },
+  body: { gap: 16 },
+  scrollBody: { gap: 16, paddingBottom: 96 },
 });

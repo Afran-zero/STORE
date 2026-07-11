@@ -1,20 +1,22 @@
-import { Pressable, Text, StyleSheet, View, type ViewStyle } from 'react-native';
+import { memo, type ReactNode } from 'react';
+import { Pressable, View, StyleSheet, type ViewStyle } from 'react-native';
 
 import { colors } from '@/lib/colors';
+import { AppText } from '@/lib/typography';
+
+type Variant = 'primary' | 'outline' | 'soft';
 
 interface BigButtonProps {
   label: string;
   caption?: string;
   onPress: () => void;
-  variant?: 'primary' | 'outline' | 'soft';
+  variant?: Variant;
   disabled?: boolean;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   style?: ViewStyle;
 }
 
-// Big, full-width tappable surface used on the Home dashboard and screen roots
-// where the worker should see one obvious next action.
-export function BigButton({
+function BigButtonImpl({
   label,
   caption,
   onPress,
@@ -25,7 +27,7 @@ export function BigButton({
 }: BigButtonProps): JSX.Element {
   const container =
     variant === 'primary' ? styles.primary : variant === 'soft' ? styles.soft : styles.outline;
-  const labelColor = variant === 'primary' ? colors.accentText : colors.text;
+  const labelInk = variant === 'primary' ? styles.primaryLabel : styles.outlineLabel;
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
@@ -40,13 +42,13 @@ export function BigButton({
       <View style={styles.row}>
         {icon ? <View style={styles.icon}>{icon}</View> : null}
         <View style={styles.textWrap}>
-          <Text style={[styles.label, { color: labelColor }]} numberOfLines={1}>
+          <AppText variant="title" style={labelInk}>
             {label}
-          </Text>
+          </AppText>
           {caption ? (
-            <Text style={[styles.caption, { color: labelColor }]} numberOfLines={2}>
+            <AppText variant="body" style={[styles.caption, labelInk]}>
               {caption}
-            </Text>
+            </AppText>
           ) : null}
         </View>
       </View>
@@ -54,23 +56,26 @@ export function BigButton({
   );
 }
 
+export const BigButton = memo(BigButtonImpl);
+
 const styles = StyleSheet.create({
   container: {
     paddingVertical: 22,
-    paddingHorizontal: 20,
-    borderRadius: 22,
-    borderWidth: 2,
-    minHeight: 84,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    minHeight: 92,
     justifyContent: 'center',
   },
-  primary: { backgroundColor: colors.accent, borderColor: colors.accent },
-  soft: { backgroundColor: colors.accentSoft, borderColor: colors.borderStrong },
-  outline: { backgroundColor: colors.background, borderColor: colors.borderStrong },
-  disabled: { opacity: 0.55 },
-  pressed: { opacity: 0.85 },
+  primary: { backgroundColor: colors.accent, borderColor: colors.border },
+  soft: { backgroundColor: colors.background, borderColor: colors.border },
+  outline: { backgroundColor: colors.background, borderColor: colors.border },
+  primaryLabel: { color: colors.accentInk },
+  outlineLabel: { color: colors.text },
+  caption: { marginTop: 4 },
+  disabled: { opacity: 0.35 },
+  pressed: { backgroundColor: colors.pressed },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   icon: { width: 28, alignItems: 'center' },
-  textWrap: { flex: 1, gap: 4 },
-  label: { fontSize: 18, fontWeight: '900' },
-  caption: { fontSize: 12, fontWeight: '500', opacity: 0.85 },
+  textWrap: { flex: 1 },
 });

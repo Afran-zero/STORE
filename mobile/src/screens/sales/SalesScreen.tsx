@@ -1,5 +1,13 @@
-import { useCallback, useState } from 'react';
-import { Text, View, StyleSheet, Modal, Pressable, TextInput, FlatList } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
+import {
+  StyleSheet,
+  Modal,
+  Pressable,
+  TextInput,
+  FlatList,
+  ListRenderItem,
+  View,
+} from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
@@ -7,6 +15,8 @@ import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { StatusChip } from '@/components/StatusChip';
 import { BigButton } from '@/components/BigButton';
+import { SectionHeader } from '@/components/Section';
+import { AppText } from '@/lib/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
   listSales,
@@ -14,23 +24,81 @@ import {
   type CreateSaleRequest,
   type Sale,
 } from '@/api/endpoints/sales';
-import { listFood, type FoodItem } from '@/api/endpoints/food';
+import {
+  getStoreAllocationSummary,
+  type Allocation,
+} from '@/api/endpoints/allocations';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { todayIso, isToday, formatClockTime as fmtTime } from '@/lib/dates';
+import { formatMoney, formatSignedMoney } from '@/lib/format';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+// ---------- Memoised list items ----------
+
+const SaleRow = memo(function SaleRow({ sale }: { sale: Sale }): JSX.Element {
+  const profit = Number(sale.profit ?? 0);
+  return (
+    <Card>
+      <View style={styles.rowSpread}>
+        <AppText variant="heading" style={styles.rowTitle} numberOfLines={1}>
+          {sale.foodName}
+        </AppText>
+        <AppText variant="heading">{formatMoney(sale.totalPrice ?? 0)}</AppText>
+      </View>
+      <View style={styles.rowSpread}>
+        <AppText variant="caption">×{sale.quantity} · {sale.channel} · {fmtTime(sale.createdAt)}</AppText>
+        <AppText variant="body" faint>
+          {formatSignedMoney(profit)} profit
+        </AppText>
+      </View>
+    </Card>
+  );
+});
+
+interface FoodTileProps {
+  id: string;
+  name: string;
+  price: number;
+  remaining: number;
+  selected: boolean;
+  onSelect: () => void;
 }
 
-function fmtTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
+const FoodTile = memo(function FoodTile({
+  name,
+  price,
+  remaining,
+  selected,
+  onSelect,
+}: FoodTileProps): JSX.Element {
+  const disabled = remaining <= 0;
+  return (
+    <Pressable
+      onPress={onSelect}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.foodCard,
+        selected ? styles.foodCardSelected : null,
+        disabled ? styles.foodCardDisabled : null,
+        pressed ? styles.pressed : null,
+      ]}
+    >
+      <AppText variant="bodyBold" numberOfLines={1}>
+        {name}
+      </AppText>
+      <AppText variant="heading" style={styles.tilePrice}>
+        {formatMoney(price)}
+      </AppText>
+      <AppText variant="caption" style={styles.tileRemaining}>
+        {remaining > 0 ? `${remaining} left` : 'sold out'}
+      </AppText>
+    </Pressable>
+  );
+});
 
-export function SalesScreen(): JSX.Element {
+// ---------- Screen ----------
+
+function SalesScreenImpl(): JSX.Element {
   const { user } = useAuth();
   const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
@@ -43,50 +111,91 @@ export function SalesScreen(): JSX.Element {
   });
 
   const today = todayIso();
-  const todays = (salesQuery.data ?? []).filter((s) => {
-    if (!s.createdAt) return false;
-    try {
-      return new Date(s.createdAt).toISOString().slice(0, 10) === today;
-    } catch {
-      return false;
-    }
+  const allocationQuery = useQuery({
+    queryKey: ['allocations', 'summary', storeId, today],
+    queryFn: () => getStoreAllocationSummary(storeId, { start: today, end: today }),
+    enabled: Boolean(storeId),
   });
+
+  const activeAllocations = useMemo<Allocation[]>(
+    () =>
+      (allocationQuery.data?.allocations ?? []).filter(
+        (a) => (a.status ?? '').toUpperCase() === 'ACTIVE',
+      ),
+    [allocationQuery.data],
+  );
+
+  const todays = useMemo<Sale[]>(
+    () =>
+      (salesQuery.data ?? []).filter((s) => isToday(s.createdAt ?? '', today)),
+    [salesQuery.data, today],
+  );
 
   const onRefresh = useCallback(() => {
     void salesQuery.refetch();
-  }, [salesQuery]);
+    void allocationQuery.refetch();
+  }, [salesQuery, allocationQuery]);
+
+  const renderSale: ListRenderItem<Sale> = useCallback(({ item }) => <SaleRow sale={item} />, []);
+  const saleKey = useCallback((s: Sale) => s.id, []);
+
+  const canSell = activeAllocations.length > 0;
+  const isFetching = salesQuery.isFetching || allocationQuery.isFetching;
 
   return (
     <AppScreen
       title="Sales"
       subtitle={`${todays.length} sale(s) today`}
       onRefresh={onRefresh}
-      refreshing={salesQuery.isFetching}
+      refreshing={isFetching}
     >
+      <Card>
+        <SectionHeader label="Today’s sellable items" />
+        {allocationQuery.isLoading ? (
+          <AppText variant="body" faint>Loading allocations…</AppText>
+        ) : canSell ? (
+          <AppText variant="body" faint>
+            {activeAllocations.length} food item(s) allocated today. The new-sale picker is scoped to these only.
+          </AppText>
+        ) : (
+          <AppText variant="body" faint>
+            No active allocation today — you can’t record new sales until your admin
+            allocates food items to this store.
+          </AppText>
+        )}
+      </Card>
+
       <BigButton
         label="+ New sale"
         caption="Tap to record one or many units of a food item"
         onPress={() => setComposerOpen(true)}
+        disabled={!canSell || allocationQuery.isLoading}
       />
+
+      <SectionHeader label="Today’s sales" />
 
       {salesQuery.isLoading ? (
         <Card>
-          <Text style={styles.loading}>Loading today's sales…</Text>
+          <AppText variant="caption">Loading today's sales…</AppText>
         </Card>
       ) : todays.length === 0 ? (
         <Card>
-          <Text style={styles.title}>No sales yet today</Text>
-          <Text style={styles.body}>
+          <AppText variant="heading">No sales yet today</AppText>
+          <AppText variant="body" faint>
             Tap “New sale” to record one. Stock deducts automatically.
-          </Text>
+          </AppText>
         </Card>
       ) : (
         <FlatList
-          scrollEnabled={false}
           data={todays}
-          keyExtractor={(item) => item.id}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item }) => <SaleRow sale={item} />}
+          keyExtractor={saleKey}
+          renderItem={renderSale}
+          ItemSeparatorComponent={SaleSeparator}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          scrollEnabled={false}
         />
       )}
 
@@ -94,9 +203,12 @@ export function SalesScreen(): JSX.Element {
         visible={composerOpen}
         onClose={() => setComposerOpen(false)}
         storeId={storeId}
+        allocations={activeAllocations}
+        todays={todays}
         onSubmitted={() => {
           qc.invalidateQueries({ queryKey: ['sales'] });
           qc.invalidateQueries({ queryKey: ['store-inventory'] });
+          qc.invalidateQueries({ queryKey: ['allocations'] });
           setComposerOpen(false);
         }}
       />
@@ -104,135 +216,197 @@ export function SalesScreen(): JSX.Element {
   );
 }
 
-function SaleRow({ sale }: { sale: Sale }): JSX.Element {
-  const profit = Number(sale.profit ?? 0);
-  return (
-    <Card>
-      <View style={styles.rowHeader}>
-        <Text style={styles.rowTitle}>{sale.foodName}</Text>
-        <Text style={styles.rowPrice}>${Number(sale.totalPrice ?? 0).toFixed(2)}</Text>
-      </View>
-      <View style={styles.rowMeta}>
-        <Text style={styles.metaText}>×{sale.quantity} · {sale.channel} · {fmtTime(sale.createdAt)}</Text>
-        <StatusChip label={profit >= 0 ? `+$${profit.toFixed(2)} profit` : `-$${Math.abs(profit).toFixed(2)}`} tone={profit >= 0 ? 'green' : 'red'} />
-      </View>
-    </Card>
-  );
+export const SalesScreen = memo(SalesScreenImpl);
+
+function SaleSeparator(): JSX.Element {
+  return <View style={styles.sep12} />;
 }
+
+// ---------- Composer sheet ----------
 
 interface SaleComposerProps {
   visible: boolean;
   onClose: () => void;
   onSubmitted: () => void;
   storeId: string;
+  allocations: Allocation[];
+  todays: Sale[];
 }
 
-function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerProps): JSX.Element {
-  const foodQuery = useQuery({
-    queryKey: ['food', 'all'],
-    queryFn: listFood,
-  });
-
-  const items = (foodQuery.data ?? []).filter((f) => (f.status ?? 'ACTIVE').toUpperCase() === 'ACTIVE');
-  const [selected, setSelected] = useState<FoodItem | null>(null);
+function SaleComposer({
+  visible,
+  onClose,
+  onSubmitted,
+  storeId,
+  allocations,
+  todays,
+}: SaleComposerProps): JSX.Element {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
+
+  const soldTodayByFood = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of todays) {
+      map.set(s.foodItemId, (map.get(s.foodItemId) ?? 0) + Number(s.quantity ?? 0));
+    }
+    return map;
+  }, [todays]);
+
+  const items = useMemo(() => {
+    return allocations.map((a) => {
+      const soldToday = soldTodayByFood.get(a.foodItemId) ?? 0;
+      const total = Number(a.quantity ?? 0);
+      const remaining = Math.max(total - soldToday, 0);
+      return {
+        allocation: a,
+        remaining,
+        selected: selectedId === a.foodItemId,
+        price: Number(a.unitPrice ?? 0),
+      };
+    });
+  }, [allocations, soldTodayByFood, selectedId]);
+
+  const selected = useMemo(() => items.find((i) => i.selected) ?? null, [items]);
+  const maxForSelected = selected ? selected.remaining : 0;
 
   const mutation = useMutation({
     mutationFn: (input: CreateSaleRequest) => recordSale(input),
     onSuccess: () => {
-      setSelected(null);
+      setSelectedId(null);
       setQuantity(1);
       onSubmitted();
     },
   });
 
-  function submit(): void {
+  const select = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      setQuantity(1);
+      setError(null);
+    },
+    [],
+  );
+
+  const handleInc = useCallback(() => {
+    setQuantity((q) => Math.min(maxForSelected, q + 1));
+  }, [maxForSelected]);
+
+  const handleDec = useCallback(() => {
+    setQuantity((q) => Math.max(1, q - 1));
+  }, []);
+
+  const onChangeText = useCallback(
+    (v: string) => {
+      const n = Number(v.replace(/[^0-9]/g, '') || 1);
+      setQuantity(Math.min(Math.max(1, n), Math.max(1, maxForSelected)));
+    },
+    [maxForSelected],
+  );
+
+  const submit = useCallback((): void => {
     if (!selected || !storeId) {
       setError('Pick a food item and ensure you are assigned to a store.');
       return;
     }
-    if (quantity <= 0) {
-      setError('Quantity must be at least 1.');
+    if (quantity > selected.remaining) {
+      setError(`Only ${selected.remaining} of "${selected.allocation.foodName ?? 'this item'}" left today.`);
       return;
     }
     setError(null);
     mutation.mutate({
       storeId,
-      foodItemId: selected.id,
+      foodItemId: selected.allocation.foodItemId,
       quantity,
       channel: 'POS',
     });
-  }
+  }, [selected, storeId, quantity, mutation]);
+
+  const renderFood: ListRenderItem<typeof items[number]> = useCallback(
+    ({ item }) => (
+      <FoodTile
+        id={item.allocation.foodItemId}
+        name={item.allocation.foodName ?? 'Item'}
+        price={item.price}
+        remaining={item.remaining}
+        selected={item.selected}
+        onSelect={() => select(item.allocation.foodItemId)}
+      />
+    ),
+    [select],
+  );
+  const foodKey = useCallback(
+    (row: typeof items[number]) => row.allocation.id || row.allocation.foodItemId,
+    [],
+  );
+  const foodSeparator = useCallback(() => <View style={styles.sep10} />, []);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
         <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>New sale</Text>
-          <Text style={styles.sheetSubtitle}>Pick the food, set quantity, submit.</Text>
+          <AppText variant="title">New sale</AppText>
+          <AppText variant="body" faint>
+            Only food items allocated to your store today can be sold.
+          </AppText>
 
-          {foodQuery.isLoading ? (
-            <Text style={styles.loading}>Loading menu…</Text>
+          {items.length === 0 ? (
+            <AppText variant="body" faint>
+              No allocations for today. Ask your admin to allocate food items first.
+            </AppText>
           ) : (
             <FlatList
               data={items}
-              keyExtractor={(f) => f.id}
+              keyExtractor={foodKey}
+              renderItem={renderFood}
               numColumns={2}
-              columnWrapperStyle={{ gap: 10 }}
-              contentContainerStyle={{ gap: 10 }}
-              style={{ maxHeight: 280 }}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => setSelected(item)}
-                  style={[
-                    styles.foodCard,
-                    selected?.id === item.id ? styles.foodCardSelected : null,
-                  ]}
-                >
-                  <Text style={styles.foodName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.foodPrice}>${Number(item.price ?? 0).toFixed(2)}</Text>
-                </Pressable>
-              )}
+              columnWrapperStyle={styles.foodColumn}
+              ItemSeparatorComponent={foodSeparator}
+              contentContainerStyle={styles.foodList}
+              style={styles.foodScroll}
+              initialNumToRender={6}
+              maxToRenderPerBatch={6}
+              windowSize={5}
             />
           )}
 
           <View style={styles.qtyRow}>
-            <Text style={styles.qtyLabel}>Quantity</Text>
+            <AppText variant="overline">Quantity</AppText>
             <View style={styles.qtyControls}>
               <Pressable
-                style={styles.qtyBtn}
-                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                style={({ pressed }) => [styles.qtyBtn, pressed ? styles.pressed : null]}
+                onPress={handleDec}
+                disabled={!selected}
               >
-                <Text style={styles.qtyBtnText}>−</Text>
+                <AppText variant="title">−</AppText>
               </Pressable>
               <TextInput
                 value={String(quantity)}
-                onChangeText={(v) => {
-                  const n = Number(v.replace(/[^0-9]/g, '') || 1);
-                  setQuantity(Math.max(1, n));
-                }}
+                onChangeText={onChangeText}
                 keyboardType="number-pad"
+                editable={Boolean(selected)}
                 style={styles.qtyInput}
               />
               <Pressable
-                style={styles.qtyBtn}
-                onPress={() => setQuantity((q) => q + 1)}
+                style={({ pressed }) => [styles.qtyBtn, pressed ? styles.pressed : null]}
+                onPress={handleInc}
+                disabled={!selected}
               >
-                <Text style={styles.qtyBtnText}>+</Text>
+                <AppText variant="title">+</AppText>
               </Pressable>
             </View>
           </View>
 
           {selected ? (
-            <Text style={styles.totalLine}>
-              {quantity} × {selected.name} = ${(quantity * Number(selected.price ?? 0)).toFixed(2)}
-            </Text>
+            <AppText variant="body">
+              {quantity} × {selected.allocation.foodName ?? 'item'} = {formatMoney(quantity * selected.price)}
+              {maxForSelected > 0 ? `  ·  max ${maxForSelected}` : ''}
+            </AppText>
           ) : null}
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <AppText variant="body" style={styles.error}>{error}</AppText> : null}
           {mutation.error instanceof ApiException ? (
-            <Text style={styles.error}>{mutation.error.message}</Text>
+            <AppText variant="body" style={styles.error}>{mutation.error.message}</AppText>
           ) : null}
 
           <View style={styles.sheetActions}>
@@ -240,7 +414,7 @@ function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerPr
             <PrimaryButton
               label={mutation.isPending ? 'Submitting…' : 'Record sale'}
               onPress={submit}
-              disabled={mutation.isPending || !selected}
+              disabled={mutation.isPending || !selected || maxForSelected <= 0}
             />
           </View>
         </View>
@@ -250,68 +424,75 @@ function SaleComposer({ visible, onClose, onSubmitted, storeId }: SaleComposerPr
 }
 
 const styles = StyleSheet.create({
-  loading: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  title: { fontSize: 16, fontWeight: '800', color: colors.text },
-  body: { fontSize: 13, color: colors.muted, lineHeight: 20 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  rowTitle: { fontSize: 15, fontWeight: '800', color: colors.text, flex: 1 },
-  rowPrice: { fontSize: 16, fontWeight: '900', color: colors.text },
-  rowMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  metaText: { fontSize: 12, color: colors.muted, fontWeight: '600' },
-
-  // Sheet
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: colors.background,
-    padding: 18,
-    paddingBottom: 28,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    gap: 12,
-    borderTopWidth: 3,
-    borderColor: colors.borderStrong,
+  rowSpread: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  sheetTitle: { fontSize: 22, fontWeight: '900', color: colors.text },
-  sheetSubtitle: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  rowTitle: { flex: 1 },
+  sep10: { height: 10 },
+  sep12: { height: 12 },
+  tilePrice: { marginTop: 4 },
+  tileRemaining: { marginTop: 4 },
+
+  foodScroll: { maxHeight: 320 },
+  foodList: { gap: 10 },
+  foodColumn: { gap: 10 },
   foodCard: {
     flex: 1,
     padding: 14,
-    borderRadius: 18,
-    borderWidth: 2,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     gap: 4,
   },
-  foodCardSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  foodName: { fontSize: 14, fontWeight: '800', color: colors.text },
-  foodPrice: { fontSize: 14, fontWeight: '900', color: colors.text },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  qtyLabel: { fontSize: 13, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  foodCardSelected: { backgroundColor: colors.accent },
+  foodCardDisabled: { opacity: 0.4 },
+  pressed: { backgroundColor: colors.pressed },
+
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
   qtyControls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   qtyBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border,
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyBtnText: { fontSize: 22, fontWeight: '900', color: colors.text },
   qtyInput: {
     minWidth: 60,
     textAlign: 'center',
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     backgroundColor: colors.background,
   },
-  totalLine: { fontSize: 14, color: colors.text, fontWeight: '800' },
-  error: { color: colors.danger, fontSize: 13, fontWeight: '700' },
+
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.background,
+    padding: 22,
+    paddingBottom: 28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1.5,
+    borderColor: colors.border,
+    gap: 14,
+  },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  error: { color: colors.text },
 });

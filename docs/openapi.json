@@ -3992,6 +3992,68 @@
         }
       }
     },
+    "/api/v1/analytics/low-stock": {
+      "get": {
+        "summary": "Low Stock",
+        "description": "Merged low-stock view: master pool + per-store shelf, enriched with cost.",
+        "operationId": "low_stock_api_v1_analytics_low_stock_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storeid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/analytics/revenue": {
       "get": {
         "summary": "Revenue",
@@ -4753,6 +4815,7 @@
           "ai"
         ],
         "summary": "List Ai Conversations",
+        "description": "List conversations owned by the current user.\n\nReturns ``{items: [...], meta: {page, limit, total}}`` so the frontend can\npaginate without losing the total count. The standard success envelope is\npreserved around it (``{success, data, meta}``).",
         "operationId": "list_ai_conversations_api_v1_ai_conversations_get",
         "security": [
           {
@@ -4872,6 +4935,59 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Update Ai Conversation",
+        "operationId": "update_ai_conversation_api_v1_ai_conversations__conversation_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIConversationUpdateRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5282,6 +5398,25 @@
         },
         "type": "object",
         "title": "AIConversationCreateRequest"
+      },
+      "AIConversationUpdateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "title": "AIConversationUpdateRequest"
       },
       "AdjustmentRequest": {
         "properties": {

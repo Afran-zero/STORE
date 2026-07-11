@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.response import success_payload
 from app.dependencies.auth import CurrentUser, get_current_user
-from app.schemas.ai import AIChatRequest, AIConversationCreateRequest
+from app.schemas.ai import AIChatRequest, AIConversationCreateRequest, AIConversationUpdateRequest
 from app.services.ai_service import AIService
 
 
@@ -28,13 +28,19 @@ async def list_ai_conversations(
     limit: int = Query(default=20, ge=1, le=100),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    """List conversations owned by the current user.
+
+    Returns ``{items: [...], meta: {page, limit, total}}`` so the frontend can
+    paginate without losing the total count. The standard success envelope is
+    preserved around it (``{success, data, meta}``).
+    """
     result = await service.list_conversations(
         business_id=current_user.businessId or "",
         user_id=current_user.userId or "",
         page=page,
         limit=limit,
     )
-    return success_payload(result["items"], meta=result["meta"])
+    return success_payload({"items": result["items"], "meta": result["meta"]})
 
 
 @router.get("/conversations/{conversation_id}")
@@ -55,6 +61,21 @@ async def delete_ai_conversation(conversation_id: str, current_user: CurrentUser
         user_id=current_user.userId or "",
     )
     return success_payload({}, message="Conversation deleted")
+
+
+@router.patch("/conversations/{conversation_id}")
+async def update_ai_conversation(
+    conversation_id: str,
+    payload: AIConversationUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    conversation = await service.update_conversation(
+        conversation_id=conversation_id,
+        business_id=current_user.businessId or "",
+        user_id=current_user.userId or "",
+        title=payload.title,
+    )
+    return success_payload(conversation, message="Conversation updated")
 
 
 @router.post("/chat")

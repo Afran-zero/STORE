@@ -3,7 +3,7 @@ import { KpiCard } from '@/components/shared/kpi-card';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { useDashboard } from '@/features/analytics/hooks/use-analytics';
+import { useDashboard, useLowStockAnalytics } from '@/features/analytics/hooks/use-analytics';
 import { useStoreLowStock } from '@/features/store-inventory/hooks/use-store-inventory';
 import { useProjectedDailyForecast } from '@/features/forecast/hooks/use-forecast';
 import { useSales } from '@/features/sales/hooks/use-sales';
@@ -11,6 +11,7 @@ import { useNotifications } from '@/features/notifications/hooks/use-notificatio
 import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import type { LowStockItem } from '@/api/endpoints/analytics';
 
 const FORECAST_COLORS = ['#09090b', '#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8', '#52525b', '#27272a'];
 
@@ -22,10 +23,37 @@ interface ForecastChartDatum {
 export function DashboardPage(): JSX.Element {
   const { storeId } = useActiveStore();
   const { data, isLoading } = useDashboard(storeId ?? undefined);
-  const { data: lowStock = [] } = useStoreLowStock(storeId ?? undefined);
+  // Primary low-stock source: analytics endpoint that merges master pool + per-store shelf.
+  const { data: lowStockResp, isLoading: lowStockLoading, dataUpdatedAt: lowStockUpdatedAt } =
+    useLowStockAnalytics(storeId ?? undefined, 50);
+  // Fallback to per-store shelf (used as a backup if the analytics endpoint is unavailable).
+  const { data: shelfLowStock = [] } = useStoreLowStock(storeId ?? undefined);
   const { data: forecast } = useProjectedDailyForecast(7, 6);
   const { data: sales = [] } = useSales(storeId ?? undefined);
   const { data: notifications = [] } = useNotifications(storeId ?? undefined);
+
+  const mergedLowStock: LowStockItem[] = (() => {
+    const fromAnalytics = lowStockResp?.items ?? [];
+    if (fromAnalytics.length > 0) return fromAnalytics;
+    // Map shelf rows into the unified LowStockItem shape so the UI renders either way.
+    return (shelfLowStock as any[]).map((row) => {
+      const ing = row.ingredient ?? {};
+      const qty = Number(row.quantity ?? 0);
+      const cost = Number(ing.costPerUnit ?? row.costPerUnit ?? 0);
+      return {
+        ingredientId: row.ingredientId ?? ing.id ?? row.id ?? '',
+        ingredientName: ing.name ?? row.ingredientName ?? row.ingredientId ?? 'Unknown',
+        unit: ing.unit ?? row.unit,
+        category: ing.category ?? row.category,
+        currentStock: qty,
+        minimumStock: Number(row.minimumStock ?? 0),
+        costPerUnit: cost,
+        lineValue: qty * cost,
+        source: 'shelf' as const,
+        storeId: storeId ?? null,
+      } satisfies LowStockItem;
+    });
+  })();
 
   // Build per-date bars from the projected forecast shape.
   const chartData: ForecastChartDatum[] = (() => {
@@ -46,9 +74,20 @@ export function DashboardPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Today's revenue" value={isLoading ? '—' : `$${data?.totals?.todayRevenue.toFixed(2) ?? '0'}`} />
+        <KpiCard label="Today's revenue" value={isLoading ? '—' : `$${(data?.totals?.todayRevenue ?? 0).toFixed(2)}`} />
         <KpiCard label="Sales today" value={isLoading ? '—' : String(data?.totals?.todaySales ?? 0)} />
-        <KpiCard label="Low stock" value={isLoading ? '—' : String(data?.totals?.lowStockItems ?? lowStock.length)} />
+        <KpiCard
+          label="Low stock"
+          value={
+            isLoading || lowStockLoading
+              ? '—'
+              : String(
+                  typeof data?.totals?.lowStockItems === 'number'
+                    ? data.totals.lowStockItems
+                    : mergedLowStock.length,
+                )
+          }
+        />
         <KpiCard label="Active stores" value={isLoading ? '—' : String(data?.totals?.activeStores ?? 0)} />
       </section>
 
@@ -108,34 +147,83 @@ export function DashboardPage(): JSX.Element {
         </Card>
 
         <Card>
-          <header className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-bold tracking-tight">Low stock</h3>
-            <Link to="/inventory" className="text-sm font-semibold text-zinc-600 hover:underline">
-              Manage
-            </Link>
+          <header className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-lg font-bold tracking-tight">Low stock</h3>
+              <p className="text-xs text-zinc-500">
+                Master pool & store shelf combined
+                {lowStockUpdatedAt
+                  ? ` · updated ${formatDistanceToNow(new Date(lowStockUpdatedAt), { addSuffix: true })}`
+                  : ''}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {lowStockResp && lowStockResp.totalValue > 0 ? (
+                <Badge className="bg-amber-50 text-amber-700 border-amber-200">
+                  ${lowStockResp.totalValue.toFixed(2)} at risk
+                </Badge>
+              ) : null}
+              <Link to="/inventory" className="text-sm font-semibold text-zinc-600 hover:underline">
+                Manage
+              </Link>
+            </div>
           </header>
-          {isLoading ? (
+          {isLoading || lowStockLoading ? (
             <div className="space-y-2">
               <Skeleton className="h-10" />
               <Skeleton className="h-10" />
               <Skeleton className="h-10" />
             </div>
-          ) : lowStock.length === 0 ? (
+          ) : mergedLowStock.length === 0 ? (
             <p className="text-sm text-zinc-500">Nothing below minimum. Keep it up.</p>
           ) : (
             <ul className="space-y-2">
-              {lowStock.slice(0, 6).map((row: any) => (
-                <li
-                  key={row.ingredientId ?? row.ingredient?.id}
-                  className="flex items-center justify-between rounded-2xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm"
-                >
-                  <div>
-                    <p className="font-semibold text-zinc-950">{row.ingredient?.name ?? row.ingredientId}</p>
-                    <p className="text-xs text-zinc-500">{row.ingredient?.unit ?? ''}</p>
-                  </div>
-                  <Badge className="bg-red-50 text-red-600 border-red-200">{row.quantity} / {row.minimumStock ?? '—'}</Badge>
+              {mergedLowStock.slice(0, 6).map((row) => {
+                const ingredientName = row.ingredientName ?? row.ingredientId ?? 'Unknown';
+                const unit = row.unit ?? '';
+                const costPerUnit = Number(row.costPerUnit ?? 0);
+                const qty = Number(row.currentStock ?? 0);
+                const minStock = Number(row.minimumStock ?? 0);
+                const lineValue = Number(row.lineValue ?? qty * costPerUnit);
+                const ratio = minStock > 0 ? qty / minStock : 0;
+                const isPool = row.source === 'pool';
+                return (
+                  <li
+                    key={`${row.source}-${row.ingredientId}`}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-semibold text-zinc-950">{ingredientName}</p>
+                        <span
+                          className={
+                            isPool
+                              ? 'inline-flex shrink-0 rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white'
+                              : 'inline-flex shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-700 border border-zinc-300'
+                          }
+                          title={isPool ? 'Master pool stock' : 'Store shelf stock'}
+                        >
+                          {isPool ? 'Pool' : 'Shelf'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        {unit}
+                        {costPerUnit > 0 ? ` · $${costPerUnit.toFixed(2)}/unit` : ''}
+                        {lineValue > 0 ? ` · value $${lineValue.toFixed(2)}` : ''}
+                        {minStock > 0 ? ` · ${(ratio * 100).toFixed(0)}% of min` : ''}
+                      </p>
+                    </div>
+                    <Badge className="ml-2 shrink-0 bg-red-50 text-red-600 border-red-200">
+                      {qty} / {minStock || '—'}
+                    </Badge>
+                  </li>
+                );
+              })}
+              {mergedLowStock.length > 6 ? (
+                <li className="pt-1 text-center text-xs text-zinc-500">
+                  +{mergedLowStock.length - 6} more below minimum
                 </li>
-              ))}
+              ) : null}
             </ul>
           )}
         </Card>

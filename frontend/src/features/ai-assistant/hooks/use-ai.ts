@@ -8,6 +8,7 @@ import {
   getMcpStatus,
   getQuickPrompts,
   listConversations,
+  renameConversation,
   sendMessage,
   type AIConversation,
   type AIConversationSummary,
@@ -64,6 +65,20 @@ export function useDeleteConversation() {
     mutationFn: (id: string) => deleteConversation(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: aiKeys.conversations() });
+    },
+  });
+}
+
+export function useRenameConversation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => renameConversation(id, title),
+    onSuccess: (conversation) => {
+      qc.invalidateQueries({ queryKey: aiKeys.conversations() });
+      if (conversation?.id) {
+        qc.setQueryData(aiKeys.conversation(conversation.id), conversation);
+        qc.invalidateQueries({ queryKey: aiKeys.conversation(conversation.id) });
+      }
     },
   });
 }

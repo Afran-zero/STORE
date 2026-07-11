@@ -160,6 +160,20 @@ class McpService:
                 "count",
                 "list_indexes",
                 "server_status",
+                # AI assistant tools — listed here so the chat UI can show users
+                # what read-only helpers STORE AI can call.
+                "get_sales_summary",
+                "get_top_selling_items",
+                "get_sales_by_payment_method",
+                "get_current_stock",
+                "get_low_stock_items",
+                "get_stock_history",
+                "suggest_restock_quantities",
+                "get_recipe_ingredients",
+                "get_recipe_cost",
+                "compare_store_performance",
+                "get_store_status",
+                "get_employee_performance",
             ],
             "collections": sorted(ALLOWED_COLLECTIONS),
             "limits": {

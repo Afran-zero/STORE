@@ -1,14 +1,98 @@
-import { useCallback, useState } from 'react';
-import { Text, View, StyleSheet, TextInput, FlatList, Pressable } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, TextInput, View, type ListRenderItem } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
-import { PrimaryButton } from '@/components/PrimaryButton';
 import { listRecipes, getRecipe, type Recipe } from '@/api/endpoints/recipes';
+import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
 
-export function RecipesScreen(): JSX.Element {
+interface RecipeRowProps {
+  recipe: Recipe;
+  isOpen: boolean;
+  onToggle: () => void;
+}
+
+const RecipeRow = memo(function RecipeRow({
+  recipe,
+  isOpen,
+  onToggle,
+}: RecipeRowProps): JSX.Element {
+  return (
+    <Pressable onPress={onToggle}>
+      <Card>
+        <View style={styles.rowHeader}>
+          <AppText variant="heading" style={styles.rowTitle} numberOfLines={1}>
+            {recipe.name}
+          </AppText>
+          <AppText variant="caption">{recipe.ingredients.length} ingredients</AppText>
+        </View>
+        {recipe.description ? (
+          <AppText variant="body" faint>{recipe.description}</AppText>
+        ) : null}
+        {isOpen ? <RecipeDetail recipe={recipe} /> : null}
+      </Card>
+    </Pressable>
+  );
+});
+
+interface RecipeDetailProps {
+  recipe: Recipe;
+}
+
+function RecipeDetailImpl({ recipe }: RecipeDetailProps): JSX.Element {
+  const detailQuery = useQuery({
+    queryKey: ['recipe', recipe.id],
+    queryFn: () => getRecipe(recipe.id),
+    enabled: Boolean(recipe.id),
+    staleTime: 5 * 60_000,
+  });
+  const full: Recipe = detailQuery.data ?? recipe;
+  const steps = useMemo(
+    () => (full.preparationSteps ?? []).filter((s) => s.trim().length > 0),
+    [full.preparationSteps],
+  );
+
+  return (
+    <View style={styles.detailWrap}>
+      {full.servingSize ? (
+        <AppText variant="caption">Serving size: {full.servingSize}</AppText>
+      ) : null}
+      <View>
+        <AppText variant="overline">Ingredients</AppText>
+        {full.ingredients.length === 0 ? (
+          <AppText variant="body" faint>No ingredients listed.</AppText>
+        ) : (
+          <View style={styles.list}>
+            {full.ingredients.map((ing, idx) => (
+              <AppText key={`${ing.ingredientId}-${idx}`} variant="body">
+                • {Number(ing.quantity).toFixed(2)}
+                {ing.unit ? ` ${ing.unit}` : ''} — {ing.ingredientName ?? ing.ingredientId}
+              </AppText>
+            ))}
+          </View>
+        )}
+      </View>
+      {steps.length > 0 ? (
+        <View>
+          <AppText variant="overline">Preparation</AppText>
+          <View style={styles.list}>
+            {steps.map((step, idx) => (
+              <AppText key={idx} variant="body">
+                {idx + 1}. {step}
+              </AppText>
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const RecipeDetail = memo(RecipeDetailImpl);
+
+function RecipesScreenImpl(): JSX.Element {
   const recipesQuery = useQuery({
     queryKey: ['recipes', 'all'],
     queryFn: listRecipes,
@@ -17,14 +101,28 @@ export function RecipesScreen(): JSX.Element {
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const items = (recipesQuery.data ?? []).filter((r) =>
-    (r.name ?? '').toLowerCase().includes(search.toLowerCase()),
-  );
-  const open = items.find((r) => r.id === openId) ?? null;
+  const items = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = recipesQuery.data ?? [];
+    return q.length === 0 ? list : list.filter((r) => (r.name ?? '').toLowerCase().includes(q));
+  }, [recipesQuery.data, search]);
 
   const onRefresh = useCallback(() => {
     void recipesQuery.refetch();
   }, [recipesQuery]);
+
+  const toggle = useCallback((id: string) => {
+    setOpenId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const renderItem: ListRenderItem<Recipe> = useCallback(
+    ({ item }) => (
+      <RecipeRow recipe={item} isOpen={openId === item.id} onToggle={() => toggle(item.id)} />
+    ),
+    [openId, toggle],
+  );
+  const keyExtractor = useCallback((r: Recipe) => r.id, []);
+  const separator = useCallback(() => <View style={styles.sep10} />, []);
 
   return (
     <AppScreen
@@ -33,102 +131,55 @@ export function RecipesScreen(): JSX.Element {
       onRefresh={onRefresh}
       refreshing={recipesQuery.isFetching}
     >
-      <View style={styles.searchBar}>
-        <Text style={styles.searchLabel}>Search</Text>
+      <View style={styles.searchWrap}>
+        <AppText variant="overline">Search</AppText>
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder="Find a recipe…"
-          placeholderTextColor={colors.muted}
+          placeholderTextColor={colors.textFaint}
           style={styles.searchInput}
         />
       </View>
 
       {recipesQuery.isLoading ? (
         <Card>
-          <Text style={styles.loading}>Loading recipes…</Text>
+          <AppText variant="caption">Loading recipes…</AppText>
         </Card>
       ) : items.length === 0 ? (
         <Card>
-          <Text style={styles.title}>No recipes available</Text>
-          <Text style={styles.body}>
+          <AppText variant="heading">No recipes available</AppText>
+          <AppText variant="body" faint>
             Ask your admin to link recipes to your store's menu items.
-          </Text>
+          </AppText>
         </Card>
       ) : (
         <FlatList
-          scrollEnabled={false}
           data={items}
-          keyExtractor={(r) => r.id}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => setOpenId(item.id === openId ? null : item.id)}>
-              <Card>
-                <View style={styles.rowHeader}>
-                  <Text style={styles.rowTitle}>{item.name}</Text>
-                  <Text style={styles.rowCount}>{item.ingredients.length} ingredients</Text>
-                </View>
-                {item.description ? <Text style={styles.body}>{item.description}</Text> : null}
-                {open?.id === item.id ? <RecipeDetail recipe={item} /> : null}
-              </Card>
-            </Pressable>
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          ItemSeparatorComponent={separator}
+          scrollEnabled={false}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          removeClippedSubviews
         />
       )}
     </AppScreen>
   );
 }
 
-function RecipeDetail({ recipe }: { recipe: Recipe }): JSX.Element {
-  // Refresh the detail with the canonical recipe endpoint on first open
-  const detailQuery = useQuery({
-    queryKey: ['recipe', recipe.id],
-    queryFn: () => getRecipe(recipe.id),
-    enabled: Boolean(recipe.id),
-    staleTime: 5 * 60_000,
-  });
-  const full = detailQuery.data ?? recipe;
-  const steps = (full.preparationSteps ?? []).filter((s) => s.trim().length > 0);
-
-  return (
-    <View style={{ gap: 10, marginTop: 8 }}>
-      {full.servingSize ? (
-        <Text style={styles.metaText}>Serving size: {full.servingSize}</Text>
-      ) : null}
-      <View>
-        <Text style={styles.sectionLabel}>Ingredients</Text>
-        {full.ingredients.length === 0 ? (
-          <Text style={styles.body}>No ingredients listed.</Text>
-        ) : (
-          full.ingredients.map((ing, idx) => (
-            <Text key={`${ing.ingredientId}-${idx}`} style={styles.listItem}>
-              • {Number(ing.quantity).toFixed(2)}
-              {ing.unit ? ` ${ing.unit}` : ''} — {ing.ingredientName ?? ing.ingredientId}
-            </Text>
-          ))
-        )}
-      </View>
-      {steps.length > 0 ? (
-        <View>
-          <Text style={styles.sectionLabel}>Preparation</Text>
-          {steps.map((step, idx) => (
-            <Text key={idx} style={styles.body}>
-              {idx + 1}. {step}
-            </Text>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
+export const RecipesScreen = memo(RecipesScreenImpl);
 
 const styles = StyleSheet.create({
-  searchBar: { gap: 6 },
-  searchLabel: { fontSize: 12, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
+  searchWrap: { gap: 6 },
+  rowTitle: { flex: 1 },
+  sep10: { height: 10 },
   searchInput: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: colors.background,
@@ -136,13 +187,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  loading: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  title: { fontSize: 16, fontWeight: '800', color: colors.text },
-  body: { fontSize: 13, color: colors.text, lineHeight: 20 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  rowTitle: { fontSize: 16, fontWeight: '800', color: colors.text, flex: 1 },
-  rowCount: { fontSize: 12, color: colors.muted, fontWeight: '700' },
-  metaText: { fontSize: 12, color: colors.muted, fontWeight: '600' },
-  sectionLabel: { fontSize: 12, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
-  listItem: { fontSize: 13, color: colors.text, lineHeight: 22 },
+  rowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  detailWrap: { gap: 12, marginTop: 8 },
+  list: { gap: 6, marginTop: 4 },
 });

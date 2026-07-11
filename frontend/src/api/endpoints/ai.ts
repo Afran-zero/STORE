@@ -28,6 +28,7 @@ export interface QuickPrompt {
   id: string;
   label: string;
   prompt: string;
+  category?: string;
 }
 
 export interface AIChatResponse {
@@ -49,6 +50,10 @@ export async function createConversation(initialMessage?: string): Promise<AICon
 
 export async function deleteConversation(id: string): Promise<{ deleted?: boolean }> {
   return apiClient.delete(`/api/v1/ai/conversations/${id}`);
+}
+
+export async function renameConversation(id: string, title: string): Promise<AIConversation> {
+  return apiClient.patch(`/api/v1/ai/conversations/${id}`, { title });
 }
 
 export async function sendMessage(input: { conversationId?: string; message: string }): Promise<AIChatResponse> {

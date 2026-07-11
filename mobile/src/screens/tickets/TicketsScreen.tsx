@@ -1,11 +1,12 @@
-import { useCallback, useState } from 'react';
-import { Text, View, StyleSheet, TextInput, FlatList, Modal, Pressable } from 'react-native';
+import { memo, useCallback, useState } from 'react';
+import { FlatList, ListRenderItem, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { StatusChip } from '@/components/StatusChip';
+import { AppText } from '@/lib/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
   createTicket,
@@ -16,114 +17,44 @@ import {
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
 
-type Priority = CreateTicketRequest['priority'];
+type Priority = NonNullable<CreateTicketRequest['priority']>;
 
 const PRIORITIES: Priority[] = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
-function toneFor(status?: string): 'green' | 'amber' | 'red' | 'gray' {
+function toneFor(status?: string): 'plain' | 'accent' | 'danger' | 'solid' {
   switch ((status ?? '').toUpperCase()) {
     case 'RESOLVED':
     case 'CLOSED':
-      return 'green';
+      return 'solid';
     case 'IN_PROGRESS':
-      return 'amber';
+      return 'accent';
     case 'OPEN':
-      return 'red';
+      return 'plain';
     default:
-      return 'gray';
+      return 'plain';
   }
 }
 
-function toneForPriority(p?: string): 'amber' | 'red' | 'gray' | 'yellow' {
-  switch ((p ?? '').toUpperCase()) {
-    case 'URGENT':
-      return 'red';
-    case 'HIGH':
-      return 'amber';
-    case 'NORMAL':
-      return 'yellow';
-    default:
-      return 'gray';
-  }
-}
-
-export function TicketsScreen(): JSX.Element {
-  const { user } = useAuth();
-  const qc = useQueryClient();
-  const [composerOpen, setComposerOpen] = useState(false);
-
-  const ticketsQuery = useQuery({
-    queryKey: ['tickets', 'mine', user?.userId ?? ''],
-    queryFn: listTickets,
-    enabled: Boolean(user),
-  });
-
-  const onRefresh = useCallback(() => {
-    void ticketsQuery.refetch();
-  }, [ticketsQuery]);
-
-  return (
-    <AppScreen
-      title="Tickets"
-      subtitle={`${ticketsQuery.data?.length ?? 0} total`}
-      onRefresh={onRefresh}
-      refreshing={ticketsQuery.isFetching}
-    >
-      <PrimaryButton
-        label="+ Submit ticket"
-        caption="Tell admin about an issue — equipment, supply, schedule, etc."
-        onPress={() => setComposerOpen(true)}
-      />
-
-      {ticketsQuery.isLoading ? (
-        <Card>
-          <Text style={styles.loading}>Loading tickets…</Text>
-        </Card>
-      ) : (ticketsQuery.data ?? []).length === 0 ? (
-        <Card>
-          <Text style={styles.title}>No tickets yet</Text>
-          <Text style={styles.body}>
-            Use “Submit ticket” to flag an issue. Tickets help admin prioritize fixes.
-          </Text>
-        </Card>
-      ) : (
-        <FlatList
-          scrollEnabled={false}
-          data={ticketsQuery.data ?? []}
-          keyExtractor={(t) => t.id}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item }) => <TicketRow ticket={item} />}
-        />
-      )}
-
-      <TicketComposer
-        visible={composerOpen}
-        onClose={() => setComposerOpen(false)}
-        onSubmitted={() => {
-          qc.invalidateQueries({ queryKey: ['tickets'] });
-          setComposerOpen(false);
-        }}
-        defaultStoreId={user?.assignedStore ?? ''}
-      />
-    </AppScreen>
-  );
-}
-
-function TicketRow({ ticket }: { ticket: Ticket }): JSX.Element {
+const TicketRow = memo(function TicketRow({ ticket }: { ticket: Ticket }): JSX.Element {
   return (
     <Card>
-      <View style={styles.rowHeader}>
-        <Text style={styles.rowTitle}>{ticket.title}</Text>
-        <StatusChip label={ticket.priority ?? 'NORMAL'} tone={toneForPriority(ticket.priority)} />
+      <View style={styles.rowSpread}>
+        <AppText variant="heading" style={styles.rowTitle}>{ticket.title}</AppText>
+        <StatusChip
+          tone={(ticket.priority ?? '').toUpperCase() === 'URGENT' ? 'solid' : 'accent'}
+          label={ticket.priority ?? 'NORMAL'}
+        />
       </View>
-      {ticket.description ? <Text style={styles.body}>{ticket.description}</Text> : null}
-      <View style={styles.rowFooter}>
-        <StatusChip label={ticket.status ?? 'OPEN'} tone={toneFor(ticket.status)} />
-        <Text style={styles.metaText}>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : ''}</Text>
+      {ticket.description ? <AppText variant="body">{ticket.description}</AppText> : null}
+      <View style={styles.rowSpread}>
+        <StatusChip tone={toneFor(ticket.status)} label={ticket.status ?? 'OPEN'} />
+        <AppText variant="caption">
+          {ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : ''}
+        </AppText>
       </View>
     </Card>
   );
-}
+});
 
 interface ComposerProps {
   visible: boolean;
@@ -132,7 +63,12 @@ interface ComposerProps {
   defaultStoreId: string;
 }
 
-function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: ComposerProps): JSX.Element {
+function TicketComposer({
+  visible,
+  onClose,
+  onSubmitted,
+  defaultStoreId,
+}: ComposerProps): JSX.Element {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('NORMAL');
@@ -148,7 +84,7 @@ function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: Compo
     },
   });
 
-  function submit(): void {
+  const submit = useCallback((): void => {
     if (!title.trim()) {
       setError('Give the ticket a short title.');
       return;
@@ -160,55 +96,62 @@ function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: Compo
       priority,
       storeId: defaultStoreId || null,
     });
-  }
+  }, [title, description, priority, defaultStoreId, mutation]);
+
+  const renderPriority = useCallback(
+    (p: Priority) => {
+      const selected = priority === p;
+      return (
+        <Pressable
+          key={p}
+          onPress={() => setPriority(p)}
+          style={({ pressed }) => [
+            styles.priorityChip,
+            selected ? styles.priorityChipSelected : null,
+            pressed ? styles.pressed : null,
+          ]}
+        >
+          <AppText variant="overline" style={selected ? styles.priorityChipTextSelected : null}>
+            {p}
+          </AppText>
+        </Pressable>
+      );
+    },
+    [priority],
+  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.sheetBackdrop}>
         <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Submit ticket</Text>
-          <Text style={styles.sheetSubtitle}>Admin will see this and respond.</Text>
+          <AppText variant="title">Submit ticket</AppText>
+          <AppText variant="body" faint>Admin will see this and respond.</AppText>
 
-          <Text style={styles.label}>Title</Text>
+          <AppText variant="overline">Title</AppText>
           <TextInput
             value={title}
             onChangeText={setTitle}
             placeholder="e.g. Freezer door won't close"
-            placeholderTextColor={colors.muted}
+            placeholderTextColor={colors.textFaint}
             style={styles.input}
           />
 
-          <Text style={styles.label}>Description</Text>
+          <AppText variant="overline">Description</AppText>
           <TextInput
             value={description}
             onChangeText={setDescription}
             placeholder="Add details that help admin act on this…"
-            placeholderTextColor={colors.muted}
+            placeholderTextColor={colors.textFaint}
             multiline
             style={[styles.input, styles.textarea]}
           />
 
-          <Text style={styles.label}>Priority</Text>
-          <View style={styles.priorityRow}>
-            {PRIORITIES.map((p) => {
-              const selected = priority === p;
-              return (
-                <Pressable
-                  key={p}
-                  onPress={() => setPriority(p)}
-                  style={[styles.priorityChip, selected ? styles.priorityChipSelected : null]}
-                >
-                  <Text style={[styles.priorityChipText, selected ? styles.priorityChipTextSelected : null]}>
-                    {p}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <AppText variant="overline">Priority</AppText>
+          <View style={styles.priorityRow}>{PRIORITIES.map(renderPriority)}</View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <AppText variant="body">{error}</AppText> : null}
           {mutation.error instanceof ApiException ? (
-            <Text style={styles.error}>{mutation.error.message}</Text>
+            <AppText variant="body">{mutation.error.message}</AppText>
           ) : null}
 
           <View style={styles.sheetActions}>
@@ -225,34 +168,108 @@ function TicketComposer({ visible, onClose, onSubmitted, defaultStoreId }: Compo
   );
 }
 
-const styles = StyleSheet.create({
-  loading: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  title: { fontSize: 16, fontWeight: '800', color: colors.text },
-  body: { fontSize: 13, color: colors.text, lineHeight: 20 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  rowTitle: { fontSize: 15, fontWeight: '800', color: colors.text, flex: 1 },
-  rowFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  metaText: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+function TicketsScreenImpl(): JSX.Element {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [composerOpen, setComposerOpen] = useState(false);
 
+  const ticketsQuery = useQuery({
+    queryKey: ['tickets', 'mine', user?.userId ?? ''],
+    queryFn: listTickets,
+    enabled: Boolean(user),
+  });
+
+  const onRefresh = useCallback(() => {
+    void ticketsQuery.refetch();
+  }, [ticketsQuery]);
+
+  const renderTicket: ListRenderItem<Ticket> = useCallback(
+    ({ item }) => <TicketRow ticket={item} />,
+    [],
+  );
+  const ticketKey = useCallback((t: Ticket) => t.id, []);
+  const ticketSeparator = useCallback(() => <View style={styles.sep12} />, []);
+
+  const onSubmitted = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['tickets'] });
+    setComposerOpen(false);
+  }, [qc]);
+
+  return (
+    <AppScreen
+      title="Tickets"
+      subtitle={`${ticketsQuery.data?.length ?? 0} total`}
+      onRefresh={onRefresh}
+      refreshing={ticketsQuery.isFetching}
+    >
+      <PrimaryButton
+        label="+ Submit ticket"
+        caption="Tell admin about an issue — equipment, supply, schedule, etc."
+        onPress={() => setComposerOpen(true)}
+      />
+
+      {ticketsQuery.isLoading ? (
+        <Card>
+          <AppText variant="caption">Loading tickets…</AppText>
+        </Card>
+      ) : (ticketsQuery.data ?? []).length === 0 ? (
+        <Card>
+          <AppText variant="heading">No tickets yet</AppText>
+          <AppText variant="body" faint>
+            Use “Submit ticket” to flag an issue. Tickets help admin prioritize fixes.
+          </AppText>
+        </Card>
+      ) : (
+        <FlatList
+          data={ticketsQuery.data ?? []}
+          keyExtractor={ticketKey}
+          renderItem={renderTicket}
+          ItemSeparatorComponent={ticketSeparator}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          scrollEnabled={false}
+        />
+      )}
+
+      <TicketComposer
+        visible={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        onSubmitted={onSubmitted}
+        defaultStoreId={user?.assignedStore ?? ''}
+      />
+    </AppScreen>
+  );
+}
+
+export const TicketsScreen = memo(TicketsScreenImpl);
+
+const styles = StyleSheet.create({
+  rowSpread: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  rowTitle: { flex: 1 },
+  sep12: { height: 12 },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.background,
-    padding: 18,
+    padding: 22,
     paddingBottom: 28,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    gap: 10,
-    borderTopWidth: 3,
-    borderColor: colors.borderStrong,
-  },
-  sheetTitle: { fontSize: 22, fontWeight: '900', color: colors.text },
-  sheetSubtitle: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  label: { fontSize: 12, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
-  input: {
-    borderWidth: 2,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 16,
+    gap: 10,
+  },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  input: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: colors.background,
@@ -266,12 +283,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.background,
   },
-  priorityChipSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  priorityChipText: { fontSize: 12, fontWeight: '800', color: colors.muted },
-  priorityChipTextSelected: { color: colors.accentText },
-  error: { color: colors.danger, fontSize: 13, fontWeight: '700' },
+  priorityChipSelected: { backgroundColor: colors.accent },
+  priorityChipTextSelected: { color: colors.accentInk },
+  pressed: { backgroundColor: colors.pressed },
 });

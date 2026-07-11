@@ -2,6 +2,8 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 
 import { apiClient } from '@/api/client';
 import { clearTokens, getStoredUser, setStoredUser, setTokens } from '@/lib/tokenStore';
+import { queryClient } from '@/lib/queryClient';
+import { clearPersistedClient } from '@/db/cachePersister';
 import type { AuthUser } from '@/types/models';
 
 type ThemeMode = 'light' | 'dark';
@@ -54,6 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
 
   const logout = async (): Promise<void> => {
     await clearTokens();
+    queryClient.clear();
+    await clearPersistedClient();
     setUser(null);
   };
 

@@ -1,19 +1,24 @@
-import { useState } from 'react';
-import { Text, TextInput, View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { memo, useCallback, useState } from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppScreen } from '@/components/AppScreen';
+import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useAuth } from '@/context/AuthContext';
+import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
 
-export function LoginScreen(): JSX.Element {
+function LoginScreenImpl(): JSX.Element {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function submit(): Promise<void> {
+  const onEmailChange = useCallback((v: string) => setEmail(v), []);
+  const onPasswordChange = useCallback((v: string) => setPassword(v), []);
+
+  const submit = useCallback(async (): Promise<void> => {
     if (!email.trim() || !password) {
       setError('Enter your email and password');
       return;
@@ -27,67 +32,75 @@ export function LoginScreen(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }
+  }, [email, password, login]);
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.kav}
     >
-      <AppScreen title="Worker sign in" subtitle="Use your store credentials to continue." scrollable={false}>
-        <View style={styles.card}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            placeholder="you@store.com"
-            placeholderTextColor={colors.muted}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={styles.input}
-          />
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            placeholder="••••••••"
-            placeholderTextColor={colors.muted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            style={styles.input}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+      <AppScreen
+        title="Worker sign in"
+        subtitle="Use your store credentials to continue."
+        scrollable={false}
+      >
+        <View style={styles.brandWrap}>
+          <AppText variant="display">STORE</AppText>
+          <AppText variant="caption">Worker console</AppText>
+        </View>
+
+        <Card>
+          <View style={styles.field}>
+            <AppText variant="overline">Email</AppText>
+            <TextInput
+              placeholder="you@store.com"
+              placeholderTextColor={colors.textFaint}
+              value={email}
+              onChangeText={onEmailChange}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={styles.input}
+            />
+          </View>
+          <View style={styles.field}>
+            <AppText variant="overline">Password</AppText>
+            <TextInput
+              placeholder="••••••••"
+              placeholderTextColor={colors.textFaint}
+              value={password}
+              onChangeText={onPasswordChange}
+              secureTextEntry
+              style={styles.input}
+            />
+          </View>
+          {error ? <AppText variant="body">{error}</AppText> : null}
           <PrimaryButton
             label={loading ? 'Signing in…' : 'Sign in'}
             onPress={() => {
               void submit();
             }}
             disabled={loading}
-            style={styles.signinButton}
           />
-        </View>
-        <Text style={styles.hint}>
+        </Card>
+
+        <AppText variant="caption" style={styles.hint}>
           You must be assigned to a store. If you don't know your credentials, ask your store admin.
-        </Text>
+        </AppText>
       </AppScreen>
     </KeyboardAvoidingView>
   );
 }
 
+export const LoginScreen = memo(LoginScreenImpl);
+
 const styles = StyleSheet.create({
   kav: { flex: 1, backgroundColor: colors.background },
-  card: {
-    gap: 10,
-    padding: 22,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surface,
-  },
-  label: { fontSize: 12, fontWeight: '800', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
+  brandWrap: { alignItems: 'flex-start', gap: 4 },
+  field: { gap: 6 },
   input: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
     backgroundColor: colors.background,
@@ -95,7 +108,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  error: { color: colors.danger, fontSize: 13, fontWeight: '700', marginTop: 4 },
-  signinButton: { marginTop: 10 },
-  hint: { fontSize: 12, color: colors.muted, textAlign: 'center', lineHeight: 18 },
+  hint: {
+    textAlign: 'center',
+  },
 });

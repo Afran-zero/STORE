@@ -13,6 +13,10 @@ class AIConversationCreateRequest(BaseModel):
     initialMessage: str | None = Field(default=None, min_length=1, max_length=4000)
 
 
+class AIConversationUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 class AIChatRequest(BaseModel):
     conversationId: str | None = None
     message: str = Field(min_length=1, max_length=4000)

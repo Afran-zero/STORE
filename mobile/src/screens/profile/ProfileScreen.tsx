@@ -1,22 +1,47 @@
-import { useCallback, useState } from 'react';
-import { Alert, Text, View, StyleSheet, Pressable } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
+import { Ticket as TicketIcon, BookOpen } from 'lucide-react';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { StatusChip } from '@/components/StatusChip';
+import { Metric } from '@/components/Section';
 import { useAuth } from '@/context/AuthContext';
 import { getStore, type Store } from '@/api/endpoints/stores';
 import { getAttendanceToday, type AttendanceRecord } from '@/api/endpoints/attendance';
 import { listTickets } from '@/api/endpoints/tickets';
+import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
+import { formatClockTime } from '@/lib/dates';
 
 type Nav = NativeStackNavigationProp<Record<string, undefined>>;
 
-export function ProfileScreen(): JSX.Element {
+interface TileProps {
+  label: string;
+  caption: string;
+  icon: JSX.Element;
+  onPress: () => void;
+}
+
+const Tile = memo(function Tile({ label, caption, icon, onPress }: TileProps): JSX.Element {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}>
+      <View style={styles.tileIcon}>{icon}</View>
+      <AppText variant="bodyBold">{label}</AppText>
+      <AppText variant="caption">{caption}</AppText>
+    </Pressable>
+  );
+});
+
+function fmtClock(iso?: string | null): string {
+  return formatClockTime(iso);
+}
+
+function ProfileScreenImpl(): JSX.Element {
   const { user, logout } = useAuth();
   const nav = useNavigation<Nav>();
   const storeId = user?.assignedStore ?? '';
@@ -40,12 +65,12 @@ export function ProfileScreen(): JSX.Element {
   });
 
   const onRefresh = useCallback(() => {
-    storeQuery.refetch();
-    attendanceQuery.refetch();
-    ticketsQuery.refetch();
+    void storeQuery.refetch();
+    void attendanceQuery.refetch();
+    void ticketsQuery.refetch();
   }, [storeQuery, attendanceQuery, ticketsQuery]);
 
-  const onLogout = (): void => {
+  const onLogout = useCallback((): void => {
     Alert.alert(
       'Log out',
       'You will need to log in again next time.',
@@ -66,15 +91,19 @@ export function ProfileScreen(): JSX.Element {
       ],
       { cancelable: true },
     );
-  };
+  }, [logout]);
 
   const store: Store | null = storeQuery.data ?? null;
-  const attendance: AttendanceRecord | null = attendanceQuery.data?.status
-    ? (attendanceQuery.data as AttendanceRecord)
-    : null;
-  const openTickets = (ticketsQuery.data ?? []).filter(
-    (t) => (t.status ?? '').toUpperCase() === 'OPEN',
-  ).length;
+  const attendanceData = attendanceQuery.data as AttendanceRecord | undefined;
+  const attendance: AttendanceRecord | null =
+    attendanceData && attendanceData.status ? attendanceData : null;
+  const openTickets = useMemo(
+    () => (ticketsQuery.data ?? []).filter((t) => (t.status ?? '').toUpperCase() === 'OPEN').length,
+    [ticketsQuery.data],
+  );
+
+  const goTickets = useCallback(() => nav.navigate('Tickets'), [nav]);
+  const goRecipes = useCallback(() => nav.navigate('Recipes'), [nav]);
 
   return (
     <AppScreen
@@ -83,78 +112,64 @@ export function ProfileScreen(): JSX.Element {
       onRefresh={onRefresh}
       refreshing={storeQuery.isFetching || attendanceQuery.isFetching || ticketsQuery.isFetching}
     >
-      <Card accent="yellow">
-        <Text style={styles.name}>{user?.name ?? 'Worker'}</Text>
-        <Text style={styles.email}>{user?.email ?? 'No email on file'}</Text>
+      <Card filled>
+        <AppText variant="title">{user?.name ?? 'Worker'}</AppText>
+        <AppText variant="caption">{user?.email ?? 'No email on file'}</AppText>
         <View style={styles.chipRow}>
-          <StatusChip label={(user?.role ?? 'WORKER').toUpperCase()} tone="amber" />
+          <StatusChip label={(user?.role ?? 'WORKER').toUpperCase()} tone="solid" />
           <StatusChip
             label={attendance ? (attendance.status ?? 'PRESENT') : 'OFFLINE'}
-            tone={attendance ? 'green' : 'gray'}
+            tone={attendance ? 'accent' : 'plain'}
           />
           {openTickets > 0 ? (
-            <StatusChip tone="red" label={`${openTickets} open ticket${openTickets === 1 ? '' : 's'}`} />
+            <StatusChip tone="danger" label={`${openTickets} OPEN TICKET${openTickets === 1 ? '' : 'S'}`} />
           ) : null}
         </View>
       </Card>
 
       <Card>
-        <Text style={styles.sectionLabel}>Assigned store</Text>
+        <AppText variant="overline">Assigned store</AppText>
         {store ? (
-          <View style={{ gap: 4, marginTop: 6 }}>
-            <Text style={styles.storeName}>{store.name}</Text>
-            <Text style={styles.body}>
+          <View style={styles.stack}>
+            <AppText variant="heading">{store.name}</AppText>
+            <AppText variant="body" faint>
               {store.address ?? 'No address on file'}
               {store.city ? `, ${store.city}` : ''}
-            </Text>
-            <Text style={styles.body}>Code: {store.code ?? '—'}</Text>
-            <Text style={styles.body}>
+            </AppText>
+            <AppText variant="body">Code: {store.code ?? '—'}</AppText>
+            <AppText variant="body">
               Hours: {store.openingTime ?? '—'} → {store.closingTime ?? '—'}
-            </Text>
-            <Text style={styles.body}>Phone: {store.phone ?? '—'}</Text>
+            </AppText>
+            <AppText variant="body">Phone: {store.phone ?? '—'}</AppText>
           </View>
         ) : (
-          <Text style={styles.body}>
+          <AppText variant="body" faint>
             {storeId ? 'Loading store…' : 'You are not currently assigned to a store. Ask your manager.'}
-          </Text>
+          </AppText>
         )}
       </Card>
 
       <Card>
-        <Text style={styles.sectionLabel}>Today</Text>
-        <View style={styles.statRow}>
-          <View>
-            <Text style={styles.statLabel}>Clocked in</Text>
-            <Text style={styles.statValue}>
-              {attendance?.clockIn ? new Date(attendance.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-            </Text>
-          </View>
-          <View>
-            <Text style={styles.statLabel}>Clocked out</Text>
-            <Text style={styles.statValue}>
-              {attendance?.clockOut ? new Date(attendance.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-            </Text>
-          </View>
+        <AppText variant="overline">Today</AppText>
+        <View style={styles.metricsRow}>
+          <Metric label="Clocked in" value={fmtClock(attendance?.clockIn)} />
+          <Metric label="Clocked out" value={fmtClock(attendance?.clockOut)} />
         </View>
       </Card>
 
-      <View style={styles.actions}>
-        <Pressable
-          onPress={() => nav.navigate('Tickets')}
-          style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}
-        >
-          <Text style={styles.tileIcon}>🎫</Text>
-          <Text style={styles.tileLabel}>My tickets</Text>
-          <Text style={styles.tileCaption}>Submit and follow up with admin.</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => nav.navigate('Recipes')}
-          style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}
-        >
-          <Text style={styles.tileIcon}>📖</Text>
-          <Text style={styles.tileLabel}>Recipes</Text>
-          <Text style={styles.tileCaption}>Prep reference for every menu item.</Text>
-        </Pressable>
+      <View style={styles.tileRow}>
+        <Tile
+          label="My tickets"
+          caption="Submit and follow up with admin."
+          icon={<TicketIcon size={20} color={colors.text} strokeWidth={1.6} />}
+          onPress={goTickets}
+        />
+        <Tile
+          label="Recipes"
+          caption="Prep reference for every menu item."
+          icon={<BookOpen size={20} color={colors.text} strokeWidth={1.6} />}
+          onPress={goRecipes}
+        />
       </View>
 
       <PrimaryButton
@@ -167,28 +182,31 @@ export function ProfileScreen(): JSX.Element {
   );
 }
 
+export const ProfileScreen = memo(ProfileScreenImpl);
+
 const styles = StyleSheet.create({
-  name: { fontSize: 22, fontWeight: '900', color: colors.text },
-  email: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  chipRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
-  sectionLabel: { fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  storeName: { fontSize: 17, fontWeight: '900', color: colors.text },
-  body: { fontSize: 13, color: colors.text, lineHeight: 20 },
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  statLabel: { fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  statValue: { fontSize: 18, fontWeight: '900', color: colors.text, marginTop: 2 },
-  actions: { flexDirection: 'row', gap: 12 },
+  chipRow: { flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' },
+  stack: { gap: 4, marginTop: 6 },
+  metricsRow: { flexDirection: 'row', gap: 12 },
+  tileRow: { flexDirection: 'row', gap: 12 },
   tile: {
     flex: 1,
     padding: 14,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
     backgroundColor: colors.background,
     gap: 4,
   },
-  tileIcon: { fontSize: 22 },
-  tileLabel: { fontSize: 15, fontWeight: '900', color: colors.text },
-  tileCaption: { fontSize: 11, color: colors.muted, fontWeight: '600' },
-  pressed: { opacity: 0.85 },
+  tileIcon: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginBottom: 4,
+  },
+  pressed: { backgroundColor: colors.pressed },
 });

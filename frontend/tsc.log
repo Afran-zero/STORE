@@ -1,0 +1,3 @@
+src/api/client.ts(11,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/main.tsx(12,17): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/register-page.tsx(18,84): error TS2353: Object literal may only specify known properties, and 'email' does not exist in type 'RegisterRequest'.

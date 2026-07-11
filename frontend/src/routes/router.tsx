@@ -1,41 +1,101 @@
+import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 
 import { AppShell } from '@/components/layout/app-shell';
 import { ProtectedRoute, RoleGuard } from '@/routes/guards';
 import { LoginPage } from '@/pages/login-page';
-import { DashboardPage } from '@/pages/dashboard-page';
-import { StoresPage } from '@/pages/stores-page';
-import { EmployeesPage } from '@/pages/employees-page';
-import { InventoryPage } from '@/pages/inventory-page';
-import { RecipesPage } from '@/pages/recipes-page';
-import { FoodPage } from '@/pages/food-page';
-import { AssignmentsPage } from '@/pages/assignments-page';
-import { AttendancePage } from '@/pages/attendance-page';
-import { SalesPage } from '@/pages/sales-page';
-import { ReportsPage } from '@/pages/reports-page';
-import { AnalyticsPage } from '@/pages/analytics-page';
-import { AllocationsPage } from '@/pages/allocations-page';
-import { ForecastPage } from '@/pages/forecast-page';
-import { TicketsPage } from '@/pages/tickets-page';
-import { NotificationsPage } from '@/pages/notifications-page';
-import { SettingsPage } from '@/pages/settings-page';
-import { ProfilePage } from '@/pages/profile-page';
-import { AiAssistantPage } from '@/pages/ai-assistant-page';
-import { HelpPage } from '@/pages/help-page';
-import { SupportPage } from '@/pages/support-page';
-import { ForbiddenPage } from '@/pages/forbidden-page';
-import { NotFoundPage } from '@/pages/not-found-page';
-import { MaintenancePage } from '@/pages/maintenance-page';
+import { PageFallback } from '@/components/layout/page-fallback';
+
+// Route-level code splitting: each page becomes its own chunk that downloads
+// only when the user navigates to it. This keeps the initial JS bundle — and
+// time-to-interactive — small even as the app grows.
+const DashboardPage = lazy(() =>
+  import('@/pages/dashboard-page').then((m) => ({ default: m.DashboardPage })),
+);
+const StoresPage = lazy(() =>
+  import('@/pages/stores-page').then((m) => ({ default: m.StoresPage })),
+);
+const EmployeesPage = lazy(() =>
+  import('@/pages/employees-page').then((m) => ({ default: m.EmployeesPage })),
+);
+const InventoryPage = lazy(() =>
+  import('@/pages/inventory-page').then((m) => ({ default: m.InventoryPage })),
+);
+const RecipesPage = lazy(() =>
+  import('@/pages/recipes-page').then((m) => ({ default: m.RecipesPage })),
+);
+const FoodPage = lazy(() =>
+  import('@/pages/food-page').then((m) => ({ default: m.FoodPage })),
+);
+const AssignmentsPage = lazy(() =>
+  import('@/pages/assignments-page').then((m) => ({ default: m.AssignmentsPage })),
+);
+const AttendancePage = lazy(() =>
+  import('@/pages/attendance-page').then((m) => ({ default: m.AttendancePage })),
+);
+const SalesPage = lazy(() =>
+  import('@/pages/sales-page').then((m) => ({ default: m.SalesPage })),
+);
+const ReportsPage = lazy(() =>
+  import('@/pages/reports-page').then((m) => ({ default: m.ReportsPage })),
+);
+const AnalyticsPage = lazy(() =>
+  import('@/pages/analytics-page').then((m) => ({ default: m.AnalyticsPage })),
+);
+const AllocationsPage = lazy(() =>
+  import('@/pages/allocations-page').then((m) => ({ default: m.AllocationsPage })),
+);
+const ForecastPage = lazy(() =>
+  import('@/pages/forecast-page').then((m) => ({ default: m.ForecastPage })),
+);
+const TicketsPage = lazy(() =>
+  import('@/pages/tickets-page').then((m) => ({ default: m.TicketsPage })),
+);
+const NotificationsPage = lazy(() =>
+  import('@/pages/notifications-page').then((m) => ({ default: m.NotificationsPage })),
+);
+const SettingsPage = lazy(() =>
+  import('@/pages/settings-page').then((m) => ({ default: m.SettingsPage })),
+);
+const ProfilePage = lazy(() =>
+  import('@/pages/profile-page').then((m) => ({ default: m.ProfilePage })),
+);
+const AiAssistantPage = lazy(() =>
+  import('@/pages/ai-assistant-page').then((m) => ({ default: m.AiAssistantPage })),
+);
+const HelpPage = lazy(() =>
+  import('@/pages/help-page').then((m) => ({ default: m.HelpPage })),
+);
+const SupportPage = lazy(() =>
+  import('@/pages/support-page').then((m) => ({ default: m.SupportPage })),
+);
+const ForbiddenPage = lazy(() =>
+  import('@/pages/forbidden-page').then((m) => ({ default: m.ForbiddenPage })),
+);
+const NotFoundPage = lazy(() =>
+  import('@/pages/not-found-page').then((m) => ({ default: m.NotFoundPage })),
+);
+const MaintenancePage = lazy(() =>
+  import('@/pages/maintenance-page').then((m) => ({ default: m.MaintenancePage })),
+);
 
 function Shell({ children }: { children: JSX.Element }): JSX.Element {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <Suspense fallback={<PageFallback />}>{children}</Suspense>
+    </AppShell>
+  );
+}
+
+function Bare({ children }: { children: JSX.Element }): JSX.Element {
+  return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
 }
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/dashboard" replace /> },
   { path: '/login', element: <LoginPage /> },
-  { path: '/403', element: <ForbiddenPage /> },
-  { path: '/maintenance', element: <MaintenancePage /> },
+  { path: '/403', element: <Bare><ForbiddenPage /></Bare> },
+  { path: '/maintenance', element: <Bare><MaintenancePage /></Bare> },
   {
     path: '/dashboard',
     element: (
@@ -103,7 +163,7 @@ export const router = createBrowserRouter([
   { path: '/settings', element: <ProtectedRoute><Shell><SettingsPage /></Shell></ProtectedRoute> },
   { path: '/profile', element: <ProtectedRoute><Shell><ProfilePage /></Shell></ProtectedRoute> },
   { path: '/ai-assistant', element: <ProtectedRoute><Shell><AiAssistantPage /></Shell></ProtectedRoute> },
-  { path: '/help', element: <HelpPage /> },
-  { path: '/support', element: <SupportPage /> },
-  { path: '*', element: <NotFoundPage /> },
+  { path: '/help', element: <Bare><HelpPage /></Bare> },
+  { path: '/support', element: <Bare><SupportPage /></Bare> },
+  { path: '*', element: <Bare><NotFoundPage /></Bare> },
 ]);

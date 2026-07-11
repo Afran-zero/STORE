@@ -10,8 +10,9 @@ from app.ai.memory import (
     get_conversation,
     list_conversations,
     load_messages,
+    update_conversation,
 )
-from app.ai.prompts import QUICK_PROMPTS
+from app.ai.prompts import QUICK_PROMPTS, get_quick_prompts
 from app.database.client import get_database
 from app.services.base import BaseService
 
@@ -52,6 +53,22 @@ class AIService(BaseService):
 
     async def delete_conversation(self, *, conversation_id: str, business_id: str, user_id: str) -> None:
         await delete_conversation(self.db, conversation_id=conversation_id, business_id=business_id, user_id=user_id)
+
+    async def update_conversation(
+        self,
+        *,
+        conversation_id: str,
+        business_id: str,
+        user_id: str,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        return await update_conversation(
+            self.db,
+            conversation_id=conversation_id,
+            business_id=business_id,
+            user_id=user_id,
+            title=title,
+        )
 
     async def chat(
         self,
@@ -108,7 +125,7 @@ class AIService(BaseService):
         }
 
     async def quick_prompts(self) -> dict[str, Any]:
-        return {"items": QUICK_PROMPTS}
+        return {"items": get_quick_prompts()}
 
     async def placeholder(self, data: Any = None, *, message: str = "AI module placeholder") -> dict[str, Any]:
         return await super().placeholder(data, message=message)

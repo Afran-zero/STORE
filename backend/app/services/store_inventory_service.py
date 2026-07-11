@@ -51,6 +51,10 @@ class StoreInventoryService:
     async def list_low_stock(self, *, business_id: str, store_id: str) -> List[Dict[str, Any]]:
         """Return rows below their minimum, enriched with embedded ingredient data
         so callers don't need to join separately (fixes dashboards showing IDs).
+
+        The embedded ``ingredient`` payload includes ``costPerUnit`` so the
+        dashboard can show the dollar value of the remaining low-stock
+        without a second round-trip.
         """
         rows = await self.repo.list_by_store(business_id=business_id, store_id=store_id)
         flagged: List[Dict[str, Any]] = []
@@ -67,6 +71,7 @@ class StoreInventoryService:
                             "name": ing.get("name"),
                             "unit": ing.get("unit"),
                             "category": ing.get("category"),
+                            "costPerUnit": ing.get("costPerUnit") or ing.get("averageCost") or 0,
                         }
                 flagged.append(row)
         return flagged
