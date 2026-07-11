@@ -2453,6 +2453,49 @@
         }
       }
     },
+    "/api/v1/store-inventory/needs-today": {
+      "get": {
+        "summary": "Needs Today",
+        "description": "Aggregate today's active-allocation ingredient requirements for a store.\n\nThe mobile Stock page calls this so workers see only the ingredients\nneeded to make today's allocated food \u2014 not the master pool or stale\nshelf rows. Each row is enriched with ``storeHas`` (what's already on\nthe shelf) and ``shortfall`` (what's still needed) for quick scanning.",
+        "operationId": "needs_today_api_v1_store_inventory_needs_today_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Storeid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sales": {
       "post": {
         "summary": "Create Sale",

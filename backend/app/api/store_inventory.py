@@ -41,3 +41,16 @@ async def set_stock(payload: dict, current_user=Depends(get_current_user), db=De
 async def low_stock(storeId: str, current_user=Depends(get_current_user), db=Depends(get_database)):
     service = StoreInventoryService(db)
     return {"success": True, "data": await service.list_low_stock(business_id=_bid(current_user), store_id=storeId)}
+
+
+@router.get("/needs-today")
+async def needs_today(storeId: str, current_user=Depends(get_current_user), db=Depends(get_database)):
+    """Aggregate today's active-allocation ingredient requirements for a store.
+
+    The mobile Stock page calls this so workers see only the ingredients
+    needed to make today's allocated food — not the master pool or stale
+    shelf rows. Each row is enriched with ``storeHas`` (what's already on
+    the shelf) and ``shortfall`` (what's still needed) for quick scanning.
+    """
+    service = StoreInventoryService(db)
+    return {"success": True, "data": await service.needs_today(business_id=_bid(current_user), store_id=storeId)}

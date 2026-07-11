@@ -8,7 +8,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { StatusChip } from '@/components/StatusChip';
 import { Metric } from '@/components/Section';
 import { useAuth } from '@/context/AuthContext';
-import { getStoreInventory, type StoreInventoryRow } from '@/api/endpoints/storeInventory';
+import { getStoreNeedsToday, type StoreNeedsTodayRow } from '@/api/endpoints/storeInventory';
 import { colors } from '@/lib/colors';
 import { AppText } from '@/lib/typography';
 
@@ -19,28 +19,37 @@ interface InventoryScreenProps {
 const IngredientRow = memo(function IngredientRow({
   row,
 }: {
-  row: StoreInventoryRow;
+  row: StoreNeedsTodayRow;
 }): JSX.Element {
-  const min = Number(row.minimumStock ?? 0);
-  const qty = Number(row.quantity ?? 0);
-  const low = min > 0 && qty <= min;
-  const empty = qty <= 0;
+  const need = Number(row.required ?? 0);
+  const have = Number(row.storeHas ?? 0);
+  const shortfall = Number(row.shortfall ?? Math.max(need - have, 0));
+  const unit = row.unit ?? '';
+  const covered = shortfall <= 0;
+  const empty = have <= 0;
   return (
     <Card>
       <View style={styles.rowSpread}>
         <AppText variant="heading" style={styles.rowTitle} numberOfLines={1}>
           {row.ingredientName ?? row.ingredientId}
         </AppText>
-        <StatusChip tone={low || empty ? 'accent' : 'solid'} label={empty ? 'EMPTY' : low ? 'LOW' : 'OK'} />
+        <StatusChip
+          tone={empty ? 'accent' : covered ? 'solid' : 'plain'}
+          label={empty ? 'EMPTY' : covered ? 'COVERED' : 'SHORT'}
+        />
       </View>
       <View style={styles.rowSpread}>
         <View>
-          <AppText variant="overline" faint>In store</AppText>
-          <AppText variant="heading">{qty.toFixed(2)} {row.unit ?? ''}</AppText>
+          <AppText variant="overline" faint>Need to make</AppText>
+          <AppText variant="heading">{need.toFixed(2)} {unit}</AppText>
         </View>
         <View>
-          <AppText variant="overline" faint>Minimum</AppText>
-          <AppText variant="heading">{min > 0 ? `${min.toFixed(2)} ${row.unit ?? ''}` : '—'}</AppText>
+          <AppText variant="overline" faint>On shelf</AppText>
+          <AppText variant="heading">{have.toFixed(2)} {unit}</AppText>
+        </View>
+        <View>
+          <AppText variant="overline" faint>Shortfall</AppText>
+          <AppText variant="heading">{shortfall.toFixed(2)} {unit}</AppText>
         </View>
       </View>
     </Card>
@@ -53,48 +62,48 @@ function InventoryScreenImpl({
   const { user } = useAuth();
   const storeId = user?.assignedStore ?? '';
 
-  const inventoryQuery = useQuery({
-    queryKey: ['store-inventory', storeId],
-    queryFn: () => getStoreInventory(storeId),
+  const needsQuery = useQuery({
+    queryKey: ['store-needs-today', storeId],
+    queryFn: () => getStoreNeedsToday(storeId),
     enabled: Boolean(storeId),
   });
 
-  const rows = inventoryQuery.data ?? [];
-  const lowStockCount = rows.filter(
-    (r) => Number(r.minimumStock ?? 0) > 0 && Number(r.quantity ?? 0) <= Number(r.minimumStock ?? 0),
-  ).length;
+  const rows = needsQuery.data ?? [];
+  const shortCount = rows.filter((r) => Number(r.shortfall ?? 0) > 0).length;
 
   const onRefresh = useCallback(() => {
-    void inventoryQuery.refetch();
-  }, [inventoryQuery]);
+    void needsQuery.refetch();
+  }, [needsQuery]);
 
-  const renderRow: ListRenderItem<StoreInventoryRow> = useCallback(
+  const renderRow: ListRenderItem<StoreNeedsTodayRow> = useCallback(
     ({ item }) => <IngredientRow row={item} />,
     [],
   );
   const keyExtractor = useCallback(
-    (row: StoreInventoryRow) => `${row.storeId}-${row.ingredientId}`,
+    (row: StoreNeedsTodayRow) => String(row.ingredientId),
     [],
   );
   const separator = useCallback(() => <View style={styles.sep12} />, []);
 
   return (
     <AppScreen
-      title="Store inventory"
-      subtitle="Stock at your assigned store, updated live."
+      title="Today's stock"
+      subtitle="Ingredients you need to make today's allocated food."
       onRefresh={onRefresh}
-      refreshing={inventoryQuery.isFetching}
+      refreshing={needsQuery.isFetching}
     >
       <Card>
         <View style={styles.rowSpread}>
           <Metric label="Ingredients" value={String(rows.length)} />
-          <Metric label="Low stock" value={String(lowStockCount)} />
+          <Metric label="Short on shelf" value={String(shortCount)} />
         </View>
-        {lowStockCount > 0 ? (
+        {shortCount > 0 ? (
           <StatusChip
             tone="accent"
-            label={`${lowStockCount} ingredient(s) at or below threshold`}
+            label={`${shortCount} ingredient(s) below what you need to make today`}
           />
+        ) : rows.length > 0 ? (
+          <StatusChip tone="solid" label="You're covered for today's allocation" />
         ) : null}
       </Card>
 
@@ -104,15 +113,16 @@ function InventoryScreenImpl({
         onPress={onOpenTodaysAllocation ?? (() => undefined)}
       />
 
-      {inventoryQuery.isLoading ? (
+      {needsQuery.isLoading ? (
         <Card>
-          <AppText variant="caption">Loading inventory…</AppText>
+          <AppText variant="caption">Loading today's needs…</AppText>
         </Card>
       ) : rows.length === 0 ? (
         <Card>
-          <AppText variant="heading">No stock at this store yet</AppText>
+          <AppText variant="heading">No active allocations for today</AppText>
           <AppText variant="body" faint>
-            Ask your manager to allocate ingredients to your store, or transfer stock from the master pool.
+            Once your manager allocates food items to this store for today, the
+            ingredients you need to make them will show up here.
           </AppText>
         </Card>
       ) : (

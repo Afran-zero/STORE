@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
-import { Ticket as TicketIcon, BookOpen } from 'lucide-react';
+import { Ticket as TicketIcon, BookOpen } from 'lucide-react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';

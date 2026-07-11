@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.store_inventory_repository import StoreInventoryRepository
 
@@ -11,42 +13,176 @@ class StoreInventoryService:
         self.db = db
         self.repo = StoreInventoryRepository(db)
         self.ingredients = IngredientRepository(db)
+        self.allocations = AllocationRepository(db)
 
     async def list_for_store(self, *, business_id: str, store_id: str) -> List[Dict[str, Any]]:
         rows = await self.repo.list_by_store(business_id=business_id, store_id=store_id)
-        # Enrich each row with the matching ingredient's name/unit so workers see
-        # "Burger Bun (Normal)" instead of the raw id when the store_inventory row
-        # was created without a snapshot of those fields.
+        if not rows:
+            return []
+
+        # Collect every ingredientId referenced by the store's rows so we can
+        # resolve names in one round-trip. Drop rows whose ingredient no longer
+        # exists in the master pool — those are orphans from deleted ingredients
+        # and have no useful name to display.
         missing: set[str] = set()
         for row in rows:
-            if not row.get("ingredientName") and row.get("ingredientId"):
+            if row.get("ingredientId"):
                 missing.add(str(row["ingredientId"]))
+
         name_map: dict[str, Dict[str, Any]] = {}
-        unit_map: dict[str, str | None] = {}
         if missing:
+            # Try businessId-scoped lookup first, then fall back to a global
+            # _id-only lookup so workers whose JWT businessId doesn't match the
+            # ingredient's businessId still get the name back.
             cursor = self.ingredients.collection.find(
                 {"businessId": business_id, "_id": {"$in": list(missing)}}
             )
             async for ing in cursor:
-                ing_id = str(ing.get("_id"))
-                name_map[ing_id] = ing
-                unit_map[ing_id] = ing.get("unit")
+                name_map[str(ing.get("_id"))] = ing
+            unresolved = [mid for mid in missing if mid not in name_map]
+            if unresolved:
+                cursor = self.ingredients.collection.find(
+                    {"_id": {"$in": unresolved}}
+                )
+                async for ing in cursor:
+                    name_map[str(ing.get("_id"))] = ing
+
+        enriched: List[Dict[str, Any]] = []
         for row in rows:
             ing_id = row.get("ingredientId")
-            if not ing_id:
+            ing = name_map.get(str(ing_id)) if ing_id else None
+            if not ing:
+                # Orphan row — ingredient has been deleted from the master pool.
+                # Skip rather than leak a raw id to the worker.
                 continue
-            ing = name_map.get(str(ing_id))
-            if ing and not row.get("ingredientName"):
+            if not row.get("ingredientName"):
                 row["ingredientName"] = ing.get("name")
-            if ing and not row.get("unit"):
+            if not row.get("unit"):
                 row["unit"] = ing.get("unit")
-        return rows
+            row["ingredient"] = {
+                "id": str(ing.get("_id")),
+                "name": ing.get("name"),
+                "unit": ing.get("unit"),
+                "category": ing.get("category"),
+                "costPerUnit": ing.get("costPerUnit") or ing.get("averageCost") or 0,
+            }
+            enriched.append(row)
+        return enriched
 
     async def get(self, *, business_id: str, store_id: str, ingredient_id: str) -> Dict[str, Any]:
         return await self.repo.get_one(business_id=business_id, store_id=store_id, ingredient_id=ingredient_id)
 
     async def set_stock(self, *, business_id: str, store_id: str, ingredient_id: str, quantity: float, minimumStock: float | None = None) -> Dict[str, Any]:
         return await self.repo.upsert(business_id=business_id, store_id=store_id, ingredient_id=ingredient_id, quantity=quantity, minimumStock=minimumStock)
+
+    async def needs_today(
+        self,
+        *,
+        business_id: str,
+        store_id: str,
+        today_iso: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Aggregate today's active-allocation ingredient requirements for a store.
+
+        The mobile Stock page calls this instead of ``list_for_store`` so the
+        worker sees only the ingredients they need to make today's allocated
+        food — not the master pool, and not stale rows whose ingredient has
+        been deleted from the master pool.
+
+        For each ACTIVE allocation dated today, we walk its pre-computed
+        ``deductions`` array (built at allocation creation time) and aggregate
+        ``perUnit * (quantity - sold)`` per ingredient. The sold quantity is
+        subtracted because the worker has already consumed that much from
+        their shelf — they only need to make what's left.
+
+        Each row is enriched with:
+          - ``ingredientName`` and ``unit`` from the master pool
+          - ``storeHas`` = the store's current shelf quantity for the ingredient
+          - ``poolCurrent`` = the master pool's remaining stock (so workers can
+            see whether they have raw material available to pull more)
+          - ``shortfall`` = max(required - storeHas, 0)
+
+        Ingredients whose master document has been deleted are skipped to
+        avoid leaking raw ObjectIds to the worker.
+        """
+        if not today_iso:
+            today_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        rows = await self.allocations.list(
+            business_id=business_id,
+            store_id=store_id,
+            start_date=today_iso,
+            end_date=today_iso,
+            status="ACTIVE",
+            limit=500,
+        )
+
+        # required[iid] = aggregated per-ingredient demand
+        required: Dict[str, float] = {}
+        for alloc in rows:
+            alloc_qty = float(alloc.get("quantity") or 0)
+            sold = float(alloc.get("sold") or 0)
+            remaining = max(alloc_qty - sold, 0)
+            if remaining <= 0:
+                continue
+            for d in alloc.get("deductions") or []:
+                ing_id = d.get("ingredientId")
+                per_unit = float(d.get("perUnit") or 0)
+                if not ing_id or per_unit <= 0:
+                    continue
+                required[str(ing_id)] = required.get(str(ing_id), 0.0) + per_unit * remaining
+
+        if not required:
+            return []
+
+        # Resolve master ingredient docs in one round-trip so workers see
+        # proper names instead of raw ids. Falls back to a global id-only
+        # lookup for the same reason list_for_store does.
+        name_map: Dict[str, Dict[str, Any]] = {}
+        cursor = self.ingredients.collection.find(
+            {"businessId": business_id, "_id": {"$in": list(required.keys())}}
+        )
+        async for ing in cursor:
+            name_map[str(ing.get("_id"))] = ing
+        unresolved = [iid for iid in required if iid not in name_map]
+        if unresolved:
+            cursor = self.ingredients.collection.find({"_id": {"$in": unresolved}})
+            async for ing in cursor:
+                name_map[str(ing.get("_id"))] = ing
+
+        # Pull the store's current shelf rows in one round-trip so the worker
+        # sees what they already have on hand vs what they still need to make.
+        shelf_rows = await self.repo.list_by_store(business_id=business_id, store_id=store_id)
+        shelf_map: Dict[str, float] = {}
+        for r in shelf_rows:
+            iid = r.get("ingredientId")
+            if iid is None:
+                continue
+            shelf_map[str(iid)] = float(r.get("quantity") or 0)
+
+        enriched: List[Dict[str, Any]] = []
+        for ing_id, need in required.items():
+            ing = name_map.get(ing_id)
+            if not ing:
+                # Orphan — the master ingredient was deleted. Skip rather than
+                # leak a raw id to the worker.
+                continue
+            have = shelf_map.get(ing_id, 0.0)
+            enriched.append({
+                "ingredientId": ing_id,
+                "ingredientName": ing.get("name"),
+                "unit": ing.get("unit"),
+                "category": ing.get("category"),
+                "required": round(need, 4),
+                "storeHas": round(have, 4),
+                "shortfall": round(max(need - have, 0.0), 4),
+                "poolCurrent": float(ing.get("currentStock") or 0),
+                "costPerUnit": float(ing.get("costPerUnit") or ing.get("averageCost") or 0),
+            })
+
+        # Highest shortfall first — workers can scan top-down for "what am I out of".
+        enriched.sort(key=lambda r: (-float(r.get("shortfall") or 0), -float(r.get("required") or 0)))
+        return enriched
 
     async def list_low_stock(self, *, business_id: str, store_id: str) -> List[Dict[str, Any]]:
         """Return rows below their minimum, enriched with embedded ingredient data

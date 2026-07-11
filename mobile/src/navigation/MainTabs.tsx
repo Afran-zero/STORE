@@ -9,7 +9,7 @@ import {
   Ticket as TicketIcon,
   User,
   type LucideIcon,
-} from 'lucide-react';
+} from 'lucide-react-native';
 
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { InventoryScreen } from '@/screens/inventory/InventoryScreen';

@@ -19,7 +19,7 @@ import {
   Ticket as TicketIcon,
   TrendingUp,
   LogOut,
-} from 'lucide-react';
+} from 'lucide-react-native';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
