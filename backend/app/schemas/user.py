@@ -27,4 +27,7 @@ class UserAssignStoreRequest(BaseModel):
 
 
 class UserResetPasswordRequest(BaseModel):
-    email: Annotated[str, Field(min_length=1)]
+    # Manager-driven reset (PATCH /users/{id}/reset-password). The new password
+    # is optional; when omitted we generate a temporary one server-side.
+    newPassword: Annotated[str, Field(default="", min_length=0, max_length=128)] = ""
+    password: Annotated[str, Field(default="", min_length=0, max_length=128)] = ""

@@ -123,16 +123,24 @@ async def assign_store(
     return success_payload(item)
 
 
-@router.post("/{user_id}/reset-password")
+@router.patch("/{user_id}/reset-password")
 async def reset_password(
     user_id: str,
     body: UserResetPasswordRequest,
     current_user: CurrentUser = Depends(_role_guard),
     service: UserService = Depends(_service),
 ):
-    new_pwd = getattr(body, "newPassword", None)
+    # Accept both `newPassword` (preferred) and `password` (legacy) to stay
+    # forgiving for older frontend clients. The service falls back to a
+    # generated temporary password when neither is supplied.
+    new_pwd = (body.newPassword or body.password or "").strip() or None
     try:
-        await service.reset_password(business_id=_bid(current_user), user_id=user_id, new_password=new_pwd)
+        await service.reset_password(
+            business_id=_bid(current_user),
+            user_id=user_id,
+            new_password=new_pwd,
+        )
     except UserNotFoundError:
         raise NotFoundError("USER_NOT_FOUND", "User not found")
-    return success_payload({"reset": True})
+    # Echo the temporary password so the manager UI can show it to the user.
+    return success_payload({"reset": True, "temporary": new_pwd or "changeme123"})

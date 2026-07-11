@@ -628,12 +628,12 @@
       }
     },
     "/api/v1/users/{user_id}/reset-password": {
-      "post": {
+      "patch": {
         "tags": [
           "users"
         ],
         "summary": "Reset Password",
-        "operationId": "reset_password_api_v1_users__user_id__reset_password_post",
+        "operationId": "reset_password_api_v1_users__user_id__reset_password_patch",
         "security": [
           {
             "HTTPBearer": []
@@ -6963,16 +6963,22 @@
       },
       "UserResetPasswordRequest": {
         "properties": {
-          "email": {
+          "newPassword": {
             "type": "string",
-            "minLength": 1,
-            "title": "Email"
+            "maxLength": 128,
+            "minLength": 0,
+            "title": "Newpassword",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 0,
+            "title": "Password",
+            "default": ""
           }
         },
         "type": "object",
-        "required": [
-          "email"
-        ],
         "title": "UserResetPasswordRequest"
       },
       "UserStatusUpdateRequest": {

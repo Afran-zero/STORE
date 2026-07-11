@@ -24,7 +24,13 @@
       "WebFetch(domain:www.npmjs.com)",
       "Bash(npm view:*)",
       "Bash(npm cache:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(npx expo:*)",
+      "Bash(ipconfig)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://192.168.0.108:8000/api/v1/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/api/v1/health)",
+      "Bash(curl -s -o /dev/null -w \"127.0.0.1: %{http_code}\\\\n\" http://127.0.0.1:8000/api/v1/health)",
+      "Bash(curl -s -o /dev/null -w \"192.168.0.108: %{http_code}\\\\n\" http://192.168.0.108:8000/api/v1/health)"
     ]
   }
 }
