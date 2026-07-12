@@ -59,25 +59,7 @@ class AllocationService:
         if not food:
             raise AllocationError(f"Food item {food_id} not found")
 
-        # Preferred path: recipe is reverse-linked to this food item via recipe.foodItemId.
         recipe = await self.recipes.get_active_for_food(business_id=business_id, food_id=food_id)
-        # Fallback: when the recipe form did not set foodItemId (older data / manual
-        # creation), trust the food.recipeId pointer and look the recipe up directly.
-        # Also auto-heal by writing the back-link so future lookups stay consistent.
-        if not recipe:
-            fallback_recipe_id = food.get("recipeId")
-            if fallback_recipe_id:
-                recipe = await self.recipes.get(business_id=business_id, recipe_id=fallback_recipe_id)
-                if recipe:
-                    try:
-                        from bson import ObjectId as _ObjectId
-                        await self.recipes.collection.update_one(
-                            {"_id": _ObjectId(fallback_recipe_id), "businessId": business_id},
-                            {"$set": {"foodItemId": food_id, "updatedAt": datetime.now(timezone.utc)}},
-                        )
-                    except Exception:
-                        # Back-link repair is best-effort; allocation still proceeds.
-                        pass
         if not recipe:
             raise AllocationError("No active recipe linked to this food item. Edit the recipe and pick a food item first.")
 
