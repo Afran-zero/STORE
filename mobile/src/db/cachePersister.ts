@@ -16,6 +16,23 @@ import type { QueryClient } from '@tanstack/react-query';
 const STORAGE_KEY = 'store_query_cache_v1';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h — keep a day of cached responses
 
+// Query keys we never want to replay from disk. These are queries whose
+// empty/old value causes silent UX bugs (e.g. the Stock page showing zero
+// ingredients because a previous session captured an empty array before the
+// admin had allocated anything). Re-fetching them on every cold start is
+// cheap and matches what users expect.
+const SKIP_KEYS: ReadonlyArray<string> = [
+  'store-needs-today',
+  'recipes', // see RecipesScreen — admin may have created recipes since
+  'allocations', // admin web mutates these out-of-band; freshness matters
+];
+
+function shouldPersistKey(queryKey: unknown[]): boolean {
+  if (!Array.isArray(queryKey) || queryKey.length === 0) return true;
+  const head = String(queryKey[0] ?? '');
+  return !SKIP_KEYS.includes(head);
+}
+
 interface PersistedClient {
   buster: string;
   timestamp: number;
@@ -50,12 +67,16 @@ export async function loadPersistedClient(buster: string): Promise<PersistedClie
 
 export async function savePersistedClient(queryClient: QueryClient, buster: string): Promise<void> {
   try {
-    const entries = queryClient.getQueryCache().getAll().map((q) => ({
-      keyHash: q.queryHash,
-      queryKey: q.queryKey as unknown[],
-      data: q.state.data,
-      dataUpdatedAt: q.state.dataUpdatedAt,
-    }));
+    const entries = queryClient
+      .getQueryCache()
+      .getAll()
+      .filter((q) => shouldPersistKey(q.queryKey as unknown[]))
+      .map((q) => ({
+        keyHash: q.queryHash,
+        queryKey: q.queryKey as unknown[],
+        data: q.state.data,
+        dataUpdatedAt: q.state.dataUpdatedAt,
+      }));
     const payload: PersistedClient = {
       buster,
       timestamp: Date.now(),

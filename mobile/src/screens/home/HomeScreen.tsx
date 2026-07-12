@@ -82,7 +82,6 @@ interface AllocationRowProps {
   sold: number;
   total: number;
   onInc: (id: string) => void;
-  onDec: (id: string) => void;
 }
 
 const AllocationRow = memo(function AllocationRow({
@@ -92,37 +91,29 @@ const AllocationRow = memo(function AllocationRow({
   sold,
   total,
   onInc,
-  onDec,
 }: AllocationRowProps): JSX.Element {
   const unitPrice = Number(alloc.unitPrice ?? 0);
+  // `queued` is now just the optimistic +1 indicator (auto-commit UX).
+  const displaySold = sold + queued;
+  const displayLeft = Math.max(total - displaySold, 0);
   return (
     <Card>
       <View style={styles.rowHeader}>
         <View style={styles.rowTitle}>
           <AppText variant="heading">{alloc.foodName ?? 'Item'}</AppText>
           <AppText variant="caption" style={styles.captionTop}>
-            {formatMoney(unitPrice)} · {sold}/{total} sold · {left} left
+            {formatMoney(unitPrice)} · {displaySold}/{total} sold · {displayLeft} left
           </AppText>
         </View>
-        {queued > 0 ? <StatusChip label={`Queued ${queued}`} tone="accent" /> : null}
+        {queued > 0 ? (
+          <StatusChip label={queued === 1 ? 'Saving…' : `Saving ${queued}…`} tone="accent" />
+        ) : null}
       </View>
 
       <View style={styles.stepperRow}>
-        <Pressable
-          onPress={() => onDec(alloc.foodItemId)}
-          style={({ pressed }) => [
-            styles.stepperBtn,
-            queued === 0 ? styles.stepperDisabled : null,
-            pressed ? styles.pressed : null,
-          ]}
-          disabled={queued === 0}
-        >
-          <AppText variant="display" style={styles.stepperText}>−</AppText>
-        </Pressable>
-
         <View style={styles.stepperDisplay}>
-          <AppText variant="metric">{queued}</AppText>
-          <AppText variant="caption">{formatMoney(queued * unitPrice)}</AppText>
+          <AppText variant="metric">{displaySold}</AppText>
+          <AppText variant="caption">sold today</AppText>
         </View>
 
         <Pressable
@@ -130,7 +121,7 @@ const AllocationRow = memo(function AllocationRow({
           style={({ pressed }) => [
             styles.stepperBtn,
             styles.stepperBtnAccent,
-            queued >= left ? styles.stepperDisabled : null,
+            displayLeft <= 0 ? styles.stepperDisabled : null,
             pressed ? styles.pressed : null,
           ]}
           disabled={queued >= left}
@@ -282,27 +273,18 @@ function HomeScreenImpl(): JSX.Element {
     },
   });
 
-  const commitMutation = useMutation({
-    mutationFn: async (lines: PendingLine[]) => {
-      const results: Sale[] = [];
-      for (const line of lines) {
-        if (line.quantity <= 0) continue;
-        const sale = await recordSale({
-          storeId,
-          foodItemId: line.foodItemId,
-          quantity: line.quantity,
-          channel: 'POS',
-        });
-        results.push(sale);
-      }
-      return results;
-    },
-    onSuccess: (sales) => {
-      const total = sales.reduce((s, r) => s + Number(r.quantity ?? 0), 0);
-      const totalPrice = sales.reduce((s, r) => s + Number(r.totalPrice ?? 0), 0);
+  // Single-sale mutation fired by handleInc. Auto-commit replaces the legacy
+// queue/Commit-bar model: each + tap immediately POSTs to /sales and
+// invalidates the affected caches. Errors roll back the optimistic bump.
+const saleMutation = useMutation({
+    mutationFn: ({ foodItemId, quantity }: { foodItemId: string; quantity: number }) =>
+      recordSale({ storeId, foodItemId, quantity, channel: 'POS' }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['allocations'] });
       qc.invalidateQueries({ queryKey: ['store-inventory'] });
+      // Clear the optimistic bump — the next allocations/sales fetch will
+      // bring back the authoritative `sold` count.
       setPending((current) => {
         const next: Record<string, PendingLine> = {};
         for (const id of Object.keys(current)) {
@@ -310,60 +292,52 @@ function HomeScreenImpl(): JSX.Element {
         }
         return next;
       });
-      Alert.alert('Sales recorded', `${total} unit(s) · ${formatMoney(totalPrice)}`);
     },
-    onError: (err) => {
-      const message = err instanceof ApiException ? err.message : 'Could not record sales';
-      Alert.alert('Failed', message);
+    onError: (err, variables) => {
+      // Roll back the optimistic +1 so the row doesn't lie to the worker.
+      setPending((current) => {
+        const line = current[variables.foodItemId];
+        if (!line || line.quantity <= 0) return current;
+        return { ...current, [variables.foodItemId]: { ...line, quantity: line.quantity - variables.quantity } };
+      });
+      const message = err instanceof ApiException ? err.message : 'Could not record sale';
+      Alert.alert('Sale failed', message);
     },
   });
 
-  const handleInc = useCallback((id: string) => {
-    setPending((current) => {
-      const line = current[id];
-      if (!line) return current;
+  const handleInc = useCallback(
+    (id: string) => {
+      const line = pending[id];
+      if (!line) return;
       const remaining = Math.max(line.totalAllocated - line.soldToday - line.quantity, 0);
       if (remaining <= 0) {
-        Alert.alert(
-          'No more stock',
-          `Only ${remaining} more of "${line.foodName}" can be queued today.`,
-        );
-        return current;
+        Alert.alert('No more stock', `Only 0 more of "${line.foodName}" can be sold today.`);
+        return;
       }
-      return { ...current, [id]: { ...line, quantity: line.quantity + 1 } };
-    });
-  }, []);
-
-  const handleDec = useCallback((id: string) => {
-    setPending((current) => {
-      const line = current[id];
-      if (!line || line.quantity <= 0) return current;
-      return { ...current, [id]: { ...line, quantity: line.quantity - 1 } };
-    });
-  }, []);
+      if (!clockedIn) {
+        Alert.alert('Clock in first', 'You need to clock in before recording sales.');
+        nav.navigate('Attendance');
+        return;
+      }
+      // Auto-commit: each tap of + records a sale immediately. We optimistically
+      // bump the local counter for instant feedback, then POST to /sales.
+      // The mutation invalidates ['sales'], ['allocations'], ['store-inventory']
+      // so the row's `sold` and the Stock page both refresh.
+      setPending((current) => ({
+        ...current,
+        [id]: { ...line, quantity: line.quantity + 1 },
+      }));
+      saleMutation.mutate({ foodItemId: id, quantity: 1 });
+    },
+    [pending, clockedIn, nav, saleMutation],
+  );
 
   const pendingLines = useMemo(
     () => Object.values(pending).filter((l) => l.quantity > 0),
     [pending],
   );
-  const pendingUnits = useMemo(
-    () => pendingLines.reduce((s, l) => s + l.quantity, 0),
-    [pendingLines],
-  );
-  const pendingTotal = useMemo(
-    () => pendingLines.reduce((s, l) => s + l.quantity * l.unitPrice, 0),
-    [pendingLines],
-  );
-
-  const commit = useCallback((): void => {
-    if (pendingLines.length === 0) return;
-    if (!clockedIn) {
-      Alert.alert('Clock in first', 'You need to clock in before recording sales.');
-      nav.navigate('Attendance');
-      return;
-    }
-    commitMutation.mutate(pendingLines);
-  }, [pendingLines, clockedIn, commitMutation, nav]);
+  // Auto-commit UX: each + tap records one sale immediately. The pending
+  // map is only used for the optimistic bump; we don't surface a Commit bar.
 
   const onRefresh = useCallback(() => {
     void attendanceQuery.refetch();
@@ -406,11 +380,10 @@ function HomeScreenImpl(): JSX.Element {
           sold={sold}
           total={total}
           onInc={handleInc}
-          onDec={handleDec}
         />
       );
     },
-    [pending, handleInc, handleDec],
+    [pending, handleInc],
   );
 
   // Key by foodItemId now that we dedupe — keeps React keys stable across
@@ -612,18 +585,14 @@ const keyExtractor = useCallback((a: Allocation) => a.foodItemId, []);
         </Pressable>
       </ScrollView>
 
-      {pendingUnits > 0 ? (
+      {pendingLines.length > 0 ? (
         <View style={styles.commitBar} pointerEvents="box-none">
           <View style={styles.commitBarInner}>
             <View style={styles.commitText}>
-              <AppText variant="heading">{pendingUnits} pending sale(s)</AppText>
-              <AppText variant="caption">{formatMoney(pendingTotal)} · ready to commit</AppText>
+              <AppText variant="caption" faint>
+                Saving {pendingLines.length} sale(s)…
+              </AppText>
             </View>
-            <PrimaryButton
-              label={commitMutation.isPending ? 'Saving…' : 'Commit'}
-              onPress={commit}
-              disabled={commitMutation.isPending || !clockedIn}
-            />
           </View>
         </View>
       ) : null}

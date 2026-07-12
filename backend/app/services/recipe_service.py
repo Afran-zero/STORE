@@ -5,8 +5,10 @@ from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from bson.errors import InvalidId
 
+from app.repositories.food_repository import FoodRepository
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.recipe_repository import RecipeRepository
+from app.repositories.store_repository import StoreRepository
 
 
 class RecipeNotFoundError(Exception):
@@ -25,6 +27,8 @@ class RecipeService:
     def __init__(self, db: Any) -> None:
         self.repo = RecipeRepository(db)
         self.ingredients = IngredientRepository(db)
+        self.food = FoodRepository(db)
+        self.stores = StoreRepository(db)
 
     async def list_recipes(self, *, business_id: str) -> List[Dict[str, Any]]:
         items = await self.repo.list(business_id=business_id)
@@ -110,7 +114,19 @@ class RecipeService:
             "preparationSteps": payload.get("preparationSteps") or [],
             "servingSize": payload.get("servingSize"),
         }
-        return await self.repo.create(business_id=business_id, payload=doc)
+        recipe = await self.repo.create(business_id=business_id, payload=doc)
+        # First-time auto-link: when the recipe points at a food item that
+        # currently has no assigned stores, copy every active store in the
+        # business into the food item's assignedStores so the new recipe is
+        # immediately reach-able from the worker app. If the admin has
+        # already curated assignedStores, leave them alone — they own the
+        # store-scoped contract from this point forward.
+        food_item_id = doc.get("foodItemId")
+        if food_item_id:
+            await self._auto_link_food_to_business_stores(
+                business_id=business_id, food_id=str(food_item_id)
+            )
+        return recipe
 
     async def update_recipe(self, *, business_id: str, recipe_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         await self.get_recipe(business_id=business_id, recipe_id=recipe_id)
@@ -133,7 +149,41 @@ class RecipeService:
         item = await self.repo.update(business_id=business_id, recipe_id=recipe_id, payload=update)
         if not item:
             raise RecipeNotFoundError(recipe_id)
+        # Same auto-link on update: if the recipe was previously unlinked
+        # and is now being pointed at a fresh food item (or a food item
+        # whose assignedStores is still empty), back-fill with the
+        # business's active stores.
+        new_food_id = payload.get("foodItemId")
+        if new_food_id:
+            await self._auto_link_food_to_business_stores(
+                business_id=business_id, food_id=str(new_food_id)
+            )
         return item
+
+    async def _auto_link_food_to_business_stores(
+        self, *, business_id: str, food_id: str
+    ) -> None:
+        """If a food item has no assignedStores, populate it with the
+        business's active stores. Idempotent and curates-only-on-empty —
+        never touches a food item the admin has explicitly curated."""
+        food = await self.food.get(business_id=business_id, food_id=food_id)
+        if not food:
+            return  # Food item missing — leave it; admin can re-link.
+        existing = food.get("assignedStores") or []
+        if existing:
+            return  # Already curated by the admin; honour their choice.
+        stores = await self.stores.list(business_id=business_id)
+        active_store_ids = [
+            str(s.get("id"))
+            for s in stores
+            if s.get("isActive", True) and s.get("status") != "CLOSED"
+        ]
+        if not active_store_ids:
+            return  # No stores in the business yet — leave it empty.
+        await self.food.update(
+            business_id=business_id, food_id=food_id,
+            payload={"assignedStores": active_store_ids},
+        )
 
     async def delete_recipe(self, *, business_id: str, recipe_id: str) -> None:
         ok = await self.repo.delete(business_id=business_id, recipe_id=recipe_id)

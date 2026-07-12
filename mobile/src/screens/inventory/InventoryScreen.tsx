@@ -71,7 +71,10 @@ function InventoryScreenImpl({
     // never sees an invalidateQueries call when a new allocation lands.
     // Poll on a 30 s cadence and refetch when the app returns to the
     // foreground so workers don't have to pull-to-refresh manually.
+    // Also force a refetch on every mount so the AsyncStorage-cached
+    // previous-session response can't lie to the worker.
     refetchInterval: 30_000,
+    refetchOnMount: 'always',
     staleTime: 0,
   });
 
