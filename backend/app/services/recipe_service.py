@@ -9,6 +9,8 @@ from app.repositories.food_repository import FoodRepository
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.recipe_repository import RecipeRepository
 from app.repositories.store_repository import StoreRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 class RecipeNotFoundError(Exception):
@@ -99,7 +101,7 @@ class RecipeService:
             enriched.append(new_line)
         recipe["ingredients"] = enriched
 
-    async def create_recipe(self, *, business_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_recipe(self, *, business_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         name = (payload.get("name") or "").strip()
         if not name:
             raise ValueError("name is required")
@@ -126,9 +128,13 @@ class RecipeService:
             await self._auto_link_food_to_business_stores(
                 business_id=business_id, food_id=str(food_item_id)
             )
+        await sync_service.publish(SyncEvent(
+            entity="recipe", action="created", businessId=business_id,
+            recordId=recipe["id"], payload=recipe, actorUserId=actor_user_id,
+        ))
         return recipe
 
-    async def update_recipe(self, *, business_id: str, recipe_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_recipe(self, *, business_id: str, recipe_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         await self.get_recipe(business_id=business_id, recipe_id=recipe_id)
         update: Dict[str, Any] = {}
         if payload.get("name") is not None:
@@ -158,6 +164,10 @@ class RecipeService:
             await self._auto_link_food_to_business_stores(
                 business_id=business_id, food_id=str(new_food_id)
             )
+        await sync_service.publish(SyncEvent(
+            entity="recipe", action="updated", businessId=business_id,
+            recordId=recipe_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
     async def _auto_link_food_to_business_stores(
@@ -185,10 +195,14 @@ class RecipeService:
             payload={"assignedStores": active_store_ids},
         )
 
-    async def delete_recipe(self, *, business_id: str, recipe_id: str) -> None:
+    async def delete_recipe(self, *, business_id: str, recipe_id: str, actor_user_id: str) -> None:
         ok = await self.repo.delete(business_id=business_id, recipe_id=recipe_id)
         if not ok:
             raise RecipeNotFoundError(recipe_id)
+        await sync_service.publish(SyncEvent(
+            entity="recipe", action="deleted", businessId=business_id,
+            recordId=recipe_id, payload=None, actorUserId=actor_user_id,
+        ))
 
     async def compute_cost(self, *, business_id: str, recipe_id: str) -> Dict[str, Any]:
         recipe = await self.get_recipe(business_id=business_id, recipe_id=recipe_id)

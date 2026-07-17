@@ -12,30 +12,36 @@ import {
 } from '@/api/endpoints/ingredients';
 import { adjustStock } from '@/api/endpoints/inventory';
 import { analyticsKeys, inventoryKeys, storeInventoryKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export function useIngredients(params: { category?: string; lowStock?: boolean } = {}) {
+  // Sync pushes live invalidations for the 'inventory' entity; only fall
+  // back to 15s polling once SyncConnectionContext flags the connection as
+  // down for long enough (see useSyncAwareRefetchInterval).
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: inventoryKeys.list(params),
     queryFn: () => listIngredients(params),
-    // Soft-reconcile every 30 s so cross-tab allocations (or any
-    // server-side mutation we missed invalidating) show up without a manual
-    // page reload. Matches the cadence used by useStoreInventory.
-    refetchInterval: 30_000,
+    refetchInterval,
   });
 }
 
 export function useIngredient(id: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: inventoryKeys.detail(id ?? ''),
     queryFn: () => getIngredient(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 
 export function useLowStockIngredients() {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: inventoryKeys.lowStock(),
     queryFn: () => listLowStock(),
+    refetchInterval,
   });
 }
 

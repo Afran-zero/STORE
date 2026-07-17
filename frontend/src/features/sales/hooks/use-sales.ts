@@ -8,19 +8,24 @@ import {
 } from '@/api/endpoints/sales';
 import { saleKeys } from '@/api/queryKeys';
 import { storeInventoryKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export function useSales(storeId?: string) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: saleKeys.list(storeId),
     queryFn: () => listSales(storeId),
+    refetchInterval,
   });
 }
 
 export function useSale(id: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: saleKeys.detail(id ?? ''),
     queryFn: () => getSale(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 

@@ -1,0 +1,14 @@
+{
+  "skills": {
+    "speckit-specify": { "enabled": true },
+    "speckit-plan": { "enabled": true },
+    "speckit-tasks": { "enabled": true },
+    "speckit-implement": { "enabled": true },
+    "speckit-constitution": { "enabled": true },
+    "speckit-clarify": { "enabled": true },
+    "speckit-analyze": { "enabled": true },
+    "speckit-checklist": { "enabled": true },
+    "speckit-converge": { "enabled": true },
+    "speckit-taskstoissues": { "enabled": true }
+  }
+}

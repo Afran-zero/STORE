@@ -3649,12 +3649,61 @@
         ],
         "summary": "List Tickets",
         "operationId": "list_tickets_api_v1_tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "assignedTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignedto"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3666,15 +3715,20 @@
         ],
         "summary": "Create Ticket",
         "operationId": "create_ticket_api_v1_tickets_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TicketCreateRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -3705,6 +3759,11 @@
         ],
         "summary": "Get Ticket",
         "operationId": "get_ticket_api_v1_tickets__ticket_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticket_id",
@@ -3743,6 +3802,11 @@
         ],
         "summary": "Update Ticket",
         "operationId": "update_ticket_api_v1_tickets__ticket_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticket_id",
@@ -3793,6 +3857,11 @@
         ],
         "summary": "Add Comment",
         "operationId": "add_comment_api_v1_tickets__ticket_id__comments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticket_id",
@@ -3843,6 +3912,11 @@
         ],
         "summary": "Change Status",
         "operationId": "change_status_api_v1_tickets__ticket_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticket_id",
@@ -3893,6 +3967,11 @@
         ],
         "summary": "Assign Ticket",
         "operationId": "assign_ticket_api_v1_tickets__ticket_id__assign_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticket_id",
@@ -3943,6 +4022,11 @@
         ],
         "summary": "Add Attachments",
         "operationId": "add_attachments_api_v1_tickets__ticket_id__attachments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticket_id",

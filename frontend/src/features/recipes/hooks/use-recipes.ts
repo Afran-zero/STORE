@@ -11,27 +11,34 @@ import {
   type UpdateRecipeRequest,
 } from '@/api/endpoints/recipes';
 import { recipeKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export function useRecipes() {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: recipeKeys.list({}),
     queryFn: () => listRecipes(),
+    refetchInterval,
   });
 }
 
 export function useRecipe(id: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: recipeKeys.detail(id ?? ''),
     queryFn: () => getRecipe(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 
 export function useRecipeCost(id: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: recipeKeys.cost(id ?? ''),
     queryFn: () => getRecipeCost(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 

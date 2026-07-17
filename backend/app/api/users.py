@@ -64,7 +64,7 @@ async def create_user(
     pwd = getattr(body, "password", None) or "changeme123"
     payload["password"] = pwd
     try:
-        item = await service.create_user(business_id=_bid(current_user), payload=payload)
+        item = await service.create_user(business_id=_bid(current_user), payload=payload, actor_user_id=current_user.userId or "")
     except UserConflictError as exc:
         raise ConflictError("USER_EXISTS", f"User '{exc}' already exists")
     except InvalidRoleError as exc:
@@ -83,7 +83,7 @@ async def update_user(
 ):
     payload = body.model_dump(exclude_none=True)
     try:
-        item = await service.update_user(business_id=_bid(current_user), user_id=user_id, payload=payload)
+        item = await service.update_user(business_id=_bid(current_user), user_id=user_id, payload=payload, actor_user_id=current_user.userId or "")
     except UserNotFoundError:
         raise NotFoundError("USER_NOT_FOUND", "User not found")
     except UserConflictError as exc:
@@ -103,7 +103,7 @@ async def change_status(
     service: UserService = Depends(_service),
 ):
     try:
-        item = await service.change_status(business_id=_bid(current_user), user_id=user_id, is_active=body.isActive)
+        item = await service.change_status(business_id=_bid(current_user), user_id=user_id, is_active=body.isActive, actor_user_id=current_user.userId or "")
     except UserNotFoundError:
         raise NotFoundError("USER_NOT_FOUND", "User not found")
     return success_payload(item)
@@ -117,7 +117,7 @@ async def assign_store(
     service: UserService = Depends(_service),
 ):
     try:
-        item = await service.assign_store(business_id=_bid(current_user), user_id=user_id, store_id=body.storeId)
+        item = await service.assign_store(business_id=_bid(current_user), user_id=user_id, store_id=body.storeId, actor_user_id=current_user.userId or "")
     except UserNotFoundError:
         raise NotFoundError("USER_NOT_FOUND", "User not found")
     return success_payload(item)
@@ -139,6 +139,7 @@ async def reset_password(
             business_id=_bid(current_user),
             user_id=user_id,
             new_password=new_pwd,
+            actor_user_id=current_user.userId or "",
         )
     except UserNotFoundError:
         raise NotFoundError("USER_NOT_FOUND", "User not found")

@@ -13,6 +13,7 @@ import {
   type LowStockResponse,
 } from '@/api/endpoints/analytics';
 import { analyticsKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 const EMPTY_RANGE: DateRange = {};
 
@@ -24,10 +25,13 @@ export function useDashboard(storeId?: string) {
 }
 
 export function useLowStockAnalytics(storeId?: string, limit = 50) {
+  // Derived from the 'inventory' entity (low-stock ingredient counts), which
+  // sync already covers live; only poll while the connection is down.
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery<LowStockResponse>({
     queryKey: [...analyticsKeys.dashboard(storeId ?? ''), 'low-stock', limit] as const,
     queryFn: () => getLowStock(storeId, limit),
-    refetchInterval: 30_000,
+    refetchInterval,
   });
 }
 

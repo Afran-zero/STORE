@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.core.exceptions import AppException
 from app.core.response import error_payload, success_payload
 from app.api import api_router
+from app.core.redis_client import redis_manager
 from app.database.client import mongo_manager
 
 
@@ -47,12 +48,14 @@ async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespons
 @app.on_event("startup")
 async def startup() -> None:
     mongo_manager.client()
+    redis_manager.client()
     export_openapi_schema()
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await mongo_manager.close()
+    await redis_manager.close()
 
 
 def export_openapi_schema() -> None:

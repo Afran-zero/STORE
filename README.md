@@ -81,7 +81,8 @@ cd STORE
 ```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate(windows)
+source .venv/bin/activate(linux)
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```

@@ -6,6 +6,7 @@ import { RouterProvider } from 'react-router-dom';
 
 import { AuthProvider } from '@/context/auth-context';
 import { queryClient } from '@/lib/query-client';
+import { SyncConnectionProvider } from '@/lib/sync/SyncConnectionContext';
 import { router } from '@/routes/router';
 import '@/index.css';
 
@@ -17,8 +18,10 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <RouterProvider router={router} />
-        <Toaster richColors position="top-right" />
+        <SyncConnectionProvider>
+          <RouterProvider router={router} />
+          <Toaster richColors position="top-right" />
+        </SyncConnectionProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,

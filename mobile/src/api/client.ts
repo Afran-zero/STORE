@@ -1,9 +1,21 @@
 import axios, { type AxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '@/lib/tokenStore';
 import { ApiException, type ApiError, type ApiSuccess } from '@/types/api';
 
-const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+function resolveBaseUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (Platform.OS === 'web') {
+    return 'http://localhost:8000';
+  }
+  if (configured) {
+    return configured;
+  }
+  return Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
+}
+
+const baseURL = resolveBaseUrl();
 
 export const apiClient = axios.create({
   baseURL,

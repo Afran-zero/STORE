@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal
 
 from app.repositories.attendance_repository import AttendanceRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 AttendanceStatus = Literal["PRESENT", "LATE", "ABSENT", "LEAVE"]
@@ -33,7 +35,7 @@ class AttendanceService:
         status: AttendanceStatus = "PRESENT",
     ) -> Dict[str, Any]:
         target_date = date or _today_iso()
-        return await self.repo.upsert_clock_in(
+        record = await self.repo.upsert_clock_in(
             business_id=business_id,
             user_id=user_id,
             store_id=store_id,
@@ -41,6 +43,11 @@ class AttendanceService:
             clock_in=_now_utc(),
             status=status,
         )
+        await sync_service.publish(SyncEvent(
+            entity="attendance", action="updated", businessId=business_id, storeId=store_id,
+            recordId=record["id"], payload=record, actorUserId=user_id,
+        ))
+        return record
 
     async def clock_out(
         self,
@@ -50,12 +57,18 @@ class AttendanceService:
         date: str | None = None,
     ) -> Dict[str, Any] | None:
         target_date = date or _today_iso()
-        return await self.repo.set_clock_out(
+        record = await self.repo.set_clock_out(
             business_id=business_id,
             user_id=user_id,
             date=target_date,
             clock_out=_now_utc(),
         )
+        if record:
+            await sync_service.publish(SyncEvent(
+                entity="attendance", action="updated", businessId=business_id, storeId=record.get("storeId"),
+                recordId=record["id"], payload=record, actorUserId=user_id,
+            ))
+        return record
 
     async def get_today(self, *, business_id: str, user_id: str) -> Dict[str, Any] | None:
         return await self.repo.get_for_day(
@@ -73,8 +86,9 @@ class AttendanceService:
         status: AttendanceStatus,
         store_id: str | None = None,
         note: str | None = None,
+        actor_user_id: str = "",
     ) -> Dict[str, Any]:
-        return await self.repo.mark_status(
+        record = await self.repo.mark_status(
             business_id=business_id,
             user_id=user_id,
             date=date,
@@ -82,6 +96,11 @@ class AttendanceService:
             store_id=store_id,
             note=note,
         )
+        await sync_service.publish(SyncEvent(
+            entity="attendance", action="updated", businessId=business_id, storeId=store_id,
+            recordId=record["id"], payload=record, actorUserId=actor_user_id or user_id,
+        ))
+        return record
 
     async def history_for_user(
         self,

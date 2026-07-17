@@ -25,7 +25,8 @@ async def upsert_assignment(payload: dict, current_user=Depends(get_current_user
         )
     service = AssignmentService(db)
     result = await service.upsert_assignment(
-        business_id=_bid(current_user), store_id=store_id, target_date=target_date, allocations=allocations
+        business_id=_bid(current_user), store_id=store_id, target_date=target_date, allocations=allocations,
+        actor_user_id=getattr(current_user, "userId", None) or "",
     )
     return {"success": True, "data": result}
 

@@ -65,7 +65,7 @@ async def create_ingredient(
     payload.pop("supplierId", None)
     payload.pop("barcode", None)
     try:
-        item = await service.create_ingredient(business_id=current_user.businessId or "", payload=payload)
+        item = await service.create_ingredient(business_id=current_user.businessId or "", payload=payload, actor_user_id=current_user.userId or "")
     except IngredientConflictError as exc:
         raise ConflictError("INGREDIENT_EXISTS", f"Ingredient '{exc}' already exists")
     except ValueError as exc:
@@ -102,7 +102,7 @@ async def update_ingredient(
     payload.pop("supplierId", None)
     payload.pop("barcode", None)
     try:
-        item = await service.update_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id, payload=payload)
+        item = await service.update_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id, payload=payload, actor_user_id=current_user.userId or "")
     except IngredientNotFoundError:
         raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
     except IngredientConflictError as exc:
@@ -117,7 +117,7 @@ async def delete_ingredient(
     service: InventoryService = Depends(_service),
 ):
     try:
-        await service.delete_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id)
+        await service.delete_ingredient(business_id=current_user.businessId or "", ingredient_id=ingredient_id, actor_user_id=current_user.userId or "")
     except IngredientNotFoundError:
         raise NotFoundError("INGREDIENT_NOT_FOUND", "Ingredient not found")
     return success_payload({"deleted": True}, message="Ingredient deleted")

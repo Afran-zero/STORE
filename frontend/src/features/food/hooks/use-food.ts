@@ -11,19 +11,24 @@ import {
   type UpdateFoodRequest,
 } from '@/api/endpoints/food';
 import { foodKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export function useFood() {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: foodKeys.list({}),
     queryFn: () => listFood(),
+    refetchInterval,
   });
 }
 
 export function useFoodItem(id: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: foodKeys.detail(id ?? ''),
     queryFn: () => getFood(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 

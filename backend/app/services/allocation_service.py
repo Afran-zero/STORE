@@ -8,7 +8,9 @@ from app.repositories.food_repository import FoodRepository
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.inventory_log_repository import InventoryLogRepository
 from app.repositories.recipe_repository import RecipeRepository
+from app.schemas.sync import SyncEvent
 from app.services.store_inventory_service import StoreInventoryService
+from app.services.sync_service import sync_service
 
 
 class AllocationError(Exception):
@@ -185,6 +187,12 @@ class AllocationService:
             )
 
         allocation_doc["transactional"] = used_transaction
+
+        await sync_service.publish(SyncEvent(
+            entity="allocation", action="created", businessId=business_id, storeId=store_id,
+            recordId=allocation_doc["id"], payload=allocation_doc, actorUserId=created_by or "",
+        ))
+
         return allocation_doc
 
     async def update_allocation(
@@ -192,6 +200,7 @@ class AllocationService:
         *,
         business_id: str,
         allocation_id: str,
+        actor_user_id: str,
         new_quantity: Optional[float] = None,
         notes: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -262,7 +271,14 @@ class AllocationService:
             allocation_id=allocation_id,
             payload=updates,
         )
-        return updated or existing
+        result = updated or existing
+
+        await sync_service.publish(SyncEvent(
+            entity="allocation", action="updated", businessId=business_id, storeId=result.get("storeId"),
+            recordId=allocation_id, payload=result, actorUserId=actor_user_id,
+        ))
+
+        return result
 
     async def revert_allocation(self, *, business_id: str, allocation_id: str, reversed_by: Optional[str] = None) -> Dict[str, Any]:
         """Reverse the allocation: refund all ingredient deductions and mark REVERSED."""
@@ -309,7 +325,14 @@ class AllocationService:
                 "reversedBy": reversed_by,
             },
         )
-        return updated or existing
+        result = updated or existing
+
+        await sync_service.publish(SyncEvent(
+            entity="allocation", action="updated", businessId=business_id, storeId=existing.get("storeId"),
+            recordId=allocation_id, payload=result, actorUserId=reversed_by or "",
+        ))
+
+        return result
 
     async def reclaim_remaining(
         self,
@@ -407,6 +430,12 @@ class AllocationService:
         )
         result = updated or existing
         result["_reclaimAction"] = "reclaimed"
+
+        await sync_service.publish(SyncEvent(
+            entity="allocation", action="updated", businessId=business_id, storeId=existing.get("storeId"),
+            recordId=allocation_id, payload=result, actorUserId=reclaimed_by or "",
+        ))
+
         return result
 
     async def list_for_store(

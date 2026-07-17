@@ -114,6 +114,7 @@ async def update_allocation(
         result = await service.update_allocation(
             business_id=current_user.businessId or "",
             allocation_id=allocation_id,
+            actor_user_id=current_user.userId or "",
             new_quantity=body.quantity,
             notes=body.notes,
         )

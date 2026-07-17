@@ -88,3 +88,10 @@ export const attendanceKeys = {
     ['attendance', 'employee', userId, start, end] as const,
   overview: (start: string, end: string) => ['attendance', 'overview', start, end] as const,
 };
+
+// Ticket persistence is still a backend placeholder (see specs/001-realtime-data-sync/tasks.md T029) —
+// this factory exists so sync wiring has a stable target once real ticket CRUD ships.
+export const ticketKeys = {
+  list: () => ['tickets', 'list'] as const,
+  detail: (id: string) => ['tickets', 'detail', id] as const,
+};

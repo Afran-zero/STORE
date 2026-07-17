@@ -2,11 +2,22 @@ import { Platform } from 'react-native';
 
 import { apiClient } from '@/api/client';
 import { enqueueItem, listQueueItems } from '@/db/offlineQueue';
+import { syncClient } from '@/lib/sync/syncClient';
 import type { QueueItem } from '@/types/models';
 
 let isSyncing = false;
 
 const isWeb = Platform.OS === 'web';
+
+// How long to wait, after a queued write succeeds, before checking whether
+// the live sync socket picked it up. This is diagnostic only — the write
+// itself already succeeded via REST, and the owning service already
+// publishes a SyncEvent for it (see specs/001-realtime-data-sync/tasks.md
+// T036), so no separate publish path is needed here. This just catches the
+// case where the socket is NOT connected at sync time, so the resulting
+// cache update will be delayed until reconnect/polling-fallback rather than
+// arriving live — worth a log line, not a retry.
+const SYNC_EFFECT_CHECK_DELAY_MS = 3000;
 
 async function processItem(item: QueueItem): Promise<void> {
   const payload = JSON.parse(item.payload) as Record<string, unknown>;
@@ -24,6 +35,19 @@ async function processItem(item: QueueItem): Promise<void> {
   if (item.type === 'TICKET') {
     await apiClient.post('/api/v1/tickets', payload);
   }
+}
+
+function checkSyncEffectReachedClient(item: QueueItem): void {
+  setTimeout(() => {
+    const status = syncClient.getState().status;
+    if (status !== 'connected') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[sync] Queued ${item.type} synced to the server, but the live sync connection is "${status}" ` +
+          'rather than "connected" — other screens/devices will not see this change until reconnect or the 15s polling fallback.',
+      );
+    }
+  }, SYNC_EFFECT_CHECK_DELAY_MS);
 }
 
 export async function syncQueue(): Promise<void> {

@@ -17,15 +17,17 @@ import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
 import { AppText } from '@/lib/typography';
 import { formatClockTime as fmtClock } from '@/lib/dates';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 function AttendanceScreenImpl(): JSX.Element {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const refetchInterval = useSyncAwareRefetchInterval(60_000);
 
   const todayQuery = useQuery({
     queryKey: ['attendance', 'today', user?.userId ?? ''],
     queryFn: getAttendanceToday,
-    refetchInterval: 60_000,
+    refetchInterval,
   });
 
   const record: AttendanceRecord | null =

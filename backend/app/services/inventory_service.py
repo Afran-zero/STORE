@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.repositories.ingredient_repository import IngredientRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 class IngredientNotFoundError(Exception):
@@ -26,7 +28,7 @@ class InventoryService:
             raise IngredientNotFoundError(ingredient_id)
         return item
 
-    async def create_ingredient(self, *, business_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_ingredient(self, *, business_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         name = (payload.get("name") or "").strip()
         if not name:
             raise ValueError("name is required")
@@ -43,9 +45,14 @@ class InventoryService:
             "supplier": payload.get("supplier"),
             "notes": payload.get("notes"),
         }
-        return await self.repo.create(business_id=business_id, payload=doc)
+        item = await self.repo.create(business_id=business_id, payload=doc)
+        await sync_service.publish(SyncEvent(
+            entity="inventory", action="created", businessId=business_id,
+            recordId=item["id"], payload=item, actorUserId=actor_user_id,
+        ))
+        return item
 
-    async def update_ingredient(self, *, business_id: str, ingredient_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_ingredient(self, *, business_id: str, ingredient_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         await self.get_ingredient(business_id=business_id, ingredient_id=ingredient_id)
         update = {k: v for k, v in payload.items() if k in {"name", "unit", "category", "costPerUnit", "minimumStock", "currentStock", "supplier", "notes"} and v is not None}
         if "name" in update:
@@ -56,12 +63,20 @@ class InventoryService:
         item = await self.repo.update(business_id=business_id, ingredient_id=ingredient_id, payload=update)
         if not item:
             raise IngredientNotFoundError(ingredient_id)
+        await sync_service.publish(SyncEvent(
+            entity="inventory", action="updated", businessId=business_id,
+            recordId=ingredient_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
-    async def delete_ingredient(self, *, business_id: str, ingredient_id: str) -> None:
+    async def delete_ingredient(self, *, business_id: str, ingredient_id: str, actor_user_id: str) -> None:
         ok = await self.repo.delete(business_id=business_id, ingredient_id=ingredient_id)
         if not ok:
             raise IngredientNotFoundError(ingredient_id)
+        await sync_service.publish(SyncEvent(
+            entity="inventory", action="deleted", businessId=business_id,
+            recordId=ingredient_id, payload=None, actorUserId=actor_user_id,
+        ))
 
     async def low_stock(self, *, business_id: str) -> List[Dict[str, Any]]:
         return await self.repo.low_stock(business_id=business_id)

@@ -12,6 +12,7 @@ import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
 import { todayIso, isInDateRange, type DateRange } from '@/lib/dates';
 import { formatMoney, formatSignedMoney } from '@/lib/format';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 type Range = DateRange;
 
@@ -85,12 +86,14 @@ function ReportsScreenImpl(): JSX.Element {
   const storeId = user?.assignedStore ?? '';
   const [range, setRange] = useState<Range>('today');
   const today = useMemo(() => todayIso(), []);
+  const refetchInterval = useSyncAwareRefetchInterval();
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'store', storeId],
     queryFn: () => listSales(storeId || undefined),
     enabled: Boolean(storeId),
     staleTime: 30_000,
+    refetchInterval,
   });
 
   const filtered: Sale[] = useMemo(

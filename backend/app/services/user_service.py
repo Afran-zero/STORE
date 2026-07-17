@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional
 
 from app.core.security import hash_password, verify_password
 from app.repositories.user_repository import UserRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 class UserNotFoundError(Exception):
@@ -37,7 +39,7 @@ class UserService:
             raise UserNotFoundError(user_id)
         return item
 
-    async def create_user(self, *, business_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_user(self, *, business_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         name = (payload.get("name") or "").strip()
         email = (payload.get("email") or "").strip().lower()
         role = payload.get("role")
@@ -58,9 +60,14 @@ class UserService:
             "assignedStore": payload.get("assignedStore"),
             "passwordHash": hash_password(raw),
         }
-        return await self.repo.create(business_id=business_id, payload=doc)
+        item = await self.repo.create(business_id=business_id, payload=doc)
+        await sync_service.publish(SyncEvent(
+            entity="user", action="created", businessId=business_id,
+            recordId=item["id"], payload=item, actorUserId=actor_user_id,
+        ))
+        return item
 
-    async def update_user(self, *, business_id: str, user_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_user(self, *, business_id: str, user_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         await self.get_user(business_id=business_id, user_id=user_id)
         update: Dict[str, Any] = {}
         if "name" in payload and payload["name"] is not None:
@@ -80,28 +87,44 @@ class UserService:
         item = await self.repo.update(business_id=business_id, user_id=user_id, payload=update)
         if not item:
             raise UserNotFoundError(user_id)
+        await sync_service.publish(SyncEvent(
+            entity="user", action="updated", businessId=business_id,
+            recordId=user_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
-    async def change_status(self, *, business_id: str, user_id: str, is_active: bool) -> Dict[str, Any]:
+    async def change_status(self, *, business_id: str, user_id: str, is_active: bool, actor_user_id: str) -> Dict[str, Any]:
         await self.get_user(business_id=business_id, user_id=user_id)
         item = await self.repo.update(business_id=business_id, user_id=user_id, payload={"isActive": is_active})
         if not item:
             raise UserNotFoundError(user_id)
+        await sync_service.publish(SyncEvent(
+            entity="user", action="updated", businessId=business_id,
+            recordId=user_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
-    async def assign_store(self, *, business_id: str, user_id: str, store_id: Optional[str]) -> Dict[str, Any]:
+    async def assign_store(self, *, business_id: str, user_id: str, store_id: Optional[str], actor_user_id: str) -> Dict[str, Any]:
         await self.get_user(business_id=business_id, user_id=user_id)
         item = await self.repo.update(business_id=business_id, user_id=user_id, payload={"assignedStore": store_id})
         if not item:
             raise UserNotFoundError(user_id)
+        await sync_service.publish(SyncEvent(
+            entity="user", action="updated", businessId=business_id,
+            recordId=user_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
-    async def reset_password(self, *, business_id: str, user_id: str, new_password: Optional[str] = None) -> Dict[str, Any]:
+    async def reset_password(self, *, business_id: str, user_id: str, new_password: Optional[str] = None, actor_user_id: str) -> Dict[str, Any]:
         await self.get_user(business_id=business_id, user_id=user_id)
         pwd = new_password or "changeme123"
         item = await self.repo.update(business_id=business_id, user_id=user_id, payload={"passwordHash": hash_password(pwd)})
         if not item:
             raise UserNotFoundError(user_id)
+        await sync_service.publish(SyncEvent(
+            entity="user", action="updated", businessId=business_id,
+            recordId=user_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
     async def authenticate(self, *, email: str, password_text: str) -> Dict[str, Any]:

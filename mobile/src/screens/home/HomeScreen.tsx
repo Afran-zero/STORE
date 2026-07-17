@@ -2,8 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   StyleSheet,
-  ScrollView,
-  RefreshControl,
   Pressable,
   View,
   FlatList,
@@ -40,6 +38,7 @@ import { colors } from '@/lib/colors';
 import { AppText } from '@/lib/typography';
 import { todayIso, formatClockTime } from '@/lib/dates';
 import { formatMoney } from '@/lib/format';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 type Nav = NativeStackNavigationProp<Record<string, undefined>>;
 
@@ -140,28 +139,34 @@ function HomeScreenImpl(): JSX.Element {
   const storeId = user?.assignedStore ?? '';
   const today = useMemo(() => todayIso(), []);
 
+  const refetchInterval = useSyncAwareRefetchInterval();
+  const attendanceRefetchInterval = useSyncAwareRefetchInterval(60_000);
+
   const attendanceQuery = useQuery({
     queryKey: ['attendance', 'today', user?.userId ?? ''],
     queryFn: getAttendanceToday,
-    refetchInterval: 60_000,
+    refetchInterval: attendanceRefetchInterval,
   });
 
   const storeQuery = useQuery({
     queryKey: ['store', storeId],
     queryFn: () => getStore(storeId),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const allocationQuery = useQuery({
     queryKey: ['allocations', 'summary', storeId, today],
     queryFn: () => getStoreAllocationSummary(storeId, { start: today, end: today }),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'store', storeId],
     queryFn: () => listSales(storeId || undefined),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const todays = useMemo<Sale[]>(
@@ -397,15 +402,8 @@ const keyExtractor = useCallback((a: Allocation) => a.foodItemId, []);
       subtitle={subtitle}
       onRefresh={onRefresh}
       refreshing={isFetching}
-      scrollable={false}
+      scrollable={true}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollBody}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isFetching} onRefresh={onRefresh} tintColor={colors.text} />
-        }
-      >
         <OfflineBanner />
 
         <View style={styles.kpiRow}>
@@ -583,7 +581,6 @@ const keyExtractor = useCallback((a: Allocation) => a.foodItemId, []);
             End your shift, confirm totals, and review what’s left.
           </AppText>
         </Pressable>
-      </ScrollView>
 
       {pendingLines.length > 0 ? (
         <View style={styles.commitBar} pointerEvents="box-none">
@@ -607,7 +604,6 @@ function Separator(): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  scrollBody: { gap: 20, paddingBottom: 140 },
   sep: { height: 16 },
 
   // KPIs

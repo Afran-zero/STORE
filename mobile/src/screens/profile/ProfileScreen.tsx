@@ -17,6 +17,7 @@ import { listTickets } from '@/api/endpoints/tickets';
 import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
 import { formatClockTime } from '@/lib/dates';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 type Nav = NativeStackNavigationProp<Record<string, undefined>>;
 
@@ -46,22 +47,26 @@ function ProfileScreenImpl(): JSX.Element {
   const nav = useNavigation<Nav>();
   const storeId = user?.assignedStore ?? '';
   const [busy, setBusy] = useState(false);
+  const refetchInterval = useSyncAwareRefetchInterval();
 
   const storeQuery = useQuery({
     queryKey: ['store', storeId],
     queryFn: () => getStore(storeId),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const attendanceQuery = useQuery({
     queryKey: ['attendance', 'today', user?.userId ?? ''],
     queryFn: getAttendanceToday,
+    refetchInterval,
   });
 
   const ticketsQuery = useQuery({
     queryKey: ['tickets', 'mine', user?.userId ?? ''],
     queryFn: listTickets,
     enabled: Boolean(user),
+    refetchInterval,
   });
 
   const onRefresh = useCallback(() => {
@@ -142,6 +147,10 @@ function ProfileScreenImpl(): JSX.Element {
             </AppText>
             <AppText variant="body">Phone: {store.phone ?? '—'}</AppText>
           </View>
+        ) : storeQuery.isError ? (
+          <AppText variant="body" faint>
+            Couldn't load your store. Pull to refresh to try again.
+          </AppText>
         ) : (
           <AppText variant="body" faint>
             {storeId ? 'Loading store…' : 'You are not currently assigned to a store. Ask your manager.'}

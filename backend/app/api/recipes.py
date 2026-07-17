@@ -53,7 +53,7 @@ async def create_recipe(
 ):
     payload: dict[str, Any] = body.model_dump()
     try:
-        item = await service.create_recipe(business_id=_bid(current_user), payload=payload)
+        item = await service.create_recipe(business_id=_bid(current_user), payload=payload, actor_user_id=current_user.userId or "")
     except RecipeConflictError as exc:
         raise ConflictError("RECIPE_EXISTS", f"Recipe '{exc}' already exists")
     except IngredientNotFoundForRecipeError as exc:
@@ -72,7 +72,7 @@ async def update_recipe(
 ):
     payload = body.model_dump(exclude_none=True)
     try:
-        item = await service.update_recipe(business_id=_bid(current_user), recipe_id=recipe_id, payload=payload)
+        item = await service.update_recipe(business_id=_bid(current_user), recipe_id=recipe_id, payload=payload, actor_user_id=current_user.userId or "")
     except RecipeNotFoundError:
         raise NotFoundError("RECIPE_NOT_FOUND", "Recipe not found")
     except RecipeConflictError as exc:
@@ -89,7 +89,7 @@ async def delete_recipe(
     service: RecipeService = Depends(_service),
 ):
     try:
-        await service.delete_recipe(business_id=_bid(current_user), recipe_id=recipe_id)
+        await service.delete_recipe(business_id=_bid(current_user), recipe_id=recipe_id, actor_user_id=current_user.userId or "")
     except RecipeNotFoundError:
         raise NotFoundError("RECIPE_NOT_FOUND", "Recipe not found")
     return success_payload({"deleted": True})

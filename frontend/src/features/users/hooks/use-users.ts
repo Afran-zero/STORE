@@ -12,13 +12,16 @@ import {
   type UserRecord,
 } from '@/api/endpoints/users';
 import { userKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 type UpdateUserPayload = { id: string; input: UpdateUserRequest };
 
 export function useUsers() {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: userKeys.list(),
     queryFn: () => listUsers(),
+    refetchInterval,
   });
 }
 

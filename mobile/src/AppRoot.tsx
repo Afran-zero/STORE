@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SyncStatusProvider } from '@/context/SyncStatusContext';
+import { SyncConnectionProvider } from '@/lib/sync/SyncConnectionContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { attachQueryPersister } from '@/db/cachePersister';
 
@@ -42,7 +43,9 @@ export function AppRoot(): JSX.Element {
         <QueryPersisterBridge />
         <AuthProvider>
           <SyncStatusProvider>
-            <AppShell />
+            <SyncConnectionProvider>
+              <AppShell />
+            </SyncConnectionProvider>
           </SyncStatusProvider>
         </AuthProvider>
       </QueryClientProvider>

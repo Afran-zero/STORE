@@ -9,12 +9,14 @@ import {
   type AttendanceStatus,
 } from '@/api/endpoints/attendance';
 import { attendanceKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export function useAttendanceToday() {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: attendanceKeys.today,
     queryFn: () => getAttendanceToday(),
-    refetchInterval: 60_000,
+    refetchInterval,
   });
 }
 

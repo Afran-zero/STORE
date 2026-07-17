@@ -16,6 +16,7 @@ import {
 } from '@/api/endpoints/tickets';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 type Priority = NonNullable<CreateTicketRequest['priority']>;
 
@@ -172,11 +173,13 @@ function TicketsScreenImpl(): JSX.Element {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
+  const refetchInterval = useSyncAwareRefetchInterval();
 
   const ticketsQuery = useQuery({
     queryKey: ['tickets', 'mine', user?.userId ?? ''],
     queryFn: listTickets,
     enabled: Boolean(user),
+    refetchInterval,
   });
 
   const onRefresh = useCallback(() => {

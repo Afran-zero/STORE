@@ -24,6 +24,7 @@ async def create_sale(payload: dict, current_user=Depends(get_current_user), db=
             quantity=payload.get("quantity", 1),
             channel=payload.get("channel", "POS"),
             served_by=getattr(current_user, "id", None),
+            actor_user_id=getattr(current_user, "userId", None) or "",
         )
     except InsufficientStockError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": exc.code, "message": str(exc)})

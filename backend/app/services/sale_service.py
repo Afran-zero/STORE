@@ -10,6 +10,8 @@ from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.sale_repository import SaleRepository
 from app.repositories.store_inventory_repository import StoreInventoryRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 class SaleError(Exception):
@@ -44,6 +46,7 @@ class SaleService:
         quantity: float,
         channel: str = "POS",
         served_by: str | None = None,
+        actor_user_id: str = "",
     ) -> Dict[str, Any]:
         food = await self.food.get(business_id=business_id, food_id=food_item_id)
         if not food:
@@ -163,6 +166,15 @@ class SaleService:
             ],
         }
         sale = await self.sales.create(payload)
+        await sync_service.publish(SyncEvent(
+            entity="sale", action="created", businessId=business_id, storeId=store_id,
+            recordId=sale["id"], payload=sale, actorUserId=actor_user_id,
+        ))
+        for entry in decremented:
+            await sync_service.publish(SyncEvent(
+                entity="storeInventory", action="updated", businessId=business_id, storeId=store_id,
+                recordId=entry["ingredientId"], payload=None, actorUserId=actor_user_id,
+            ))
         low_stock_after: List[Dict[str, Any]] = []
         for entry in decremented:
             current = await self.store_inventory.get_one(business_id=business_id, store_id=store_id, ingredient_id=entry["ingredientId"])

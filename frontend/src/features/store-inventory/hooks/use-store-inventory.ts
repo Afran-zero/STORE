@@ -7,22 +7,25 @@ import {
   type StoreInventoryRow,
 } from '@/api/endpoints/storeInventory';
 import { storeInventoryKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export function useStoreInventory(storeId: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: storeInventoryKeys.list(storeId ?? ''),
     queryFn: () => listStoreInventory(storeId as string),
     enabled: Boolean(storeId),
-    refetchInterval: 30_000,
+    refetchInterval,
   });
 }
 
 export function useStoreLowStock(storeId: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: storeInventoryKeys.lowStock(storeId ?? ''),
     queryFn: () => listLowStock(storeId as string),
     enabled: Boolean(storeId),
-    refetchInterval: 30_000,
+    refetchInterval,
   });
 }
 

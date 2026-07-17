@@ -13,6 +13,7 @@ import {
   type AllocationUpdateRequest,
 } from '@/api/endpoints/allocations';
 import { allocationKeys } from '@/api/queryKeys';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 interface AllocationListParams {
   storeId?: string;
@@ -24,17 +25,21 @@ interface AllocationListParams {
 }
 
 export function useAllocations(params: AllocationListParams = {}) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: allocationKeys.list(params as Record<string, string | number | undefined>),
     queryFn: () => listAllocations(params),
+    refetchInterval,
   });
 }
 
 export function useAllocation(id: string | null) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: id ? allocationKeys.detail(id) : ['allocations', 'disabled'],
     queryFn: () => getAllocation(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 
@@ -42,10 +47,12 @@ export function useStoreAllocationSummary(
   storeId: string | null,
   range: { start?: string; end?: string } = {},
 ) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: storeId ? allocationKeys.storeSummary(storeId, range.start, range.end) : ['allocations', 'disabled'],
     queryFn: () => getStoreAllocationSummary(storeId as string, range),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 }
 

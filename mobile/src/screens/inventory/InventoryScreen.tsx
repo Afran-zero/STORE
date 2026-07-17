@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getStoreNeedsToday, type StoreNeedsTodayRow } from '@/api/endpoints/storeInventory';
 import { colors } from '@/lib/colors';
 import { AppText } from '@/lib/typography';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 interface InventoryScreenProps {
   onOpenTodaysAllocation?: () => void;
@@ -62,18 +63,21 @@ function InventoryScreenImpl({
   const { user } = useAuth();
   const storeId = user?.assignedStore ?? '';
   const qc = useQueryClient();
+  // Live sync now invalidates ['store-needs-today'] on 'inventory' events, so
+  // this only needs to poll on a 30 s cadence as a fallback baseline while
+  // the connection is healthy — useSyncAwareRefetchInterval steps that up to
+  // the shared 15 s cadence once the live connection has been down long
+  // enough to trip the polling fallback.
+  const refetchInterval = useSyncAwareRefetchInterval(30_000);
 
   const needsQuery = useQuery({
     queryKey: ['store-needs-today', storeId],
     queryFn: () => getStoreNeedsToday(storeId),
     enabled: Boolean(storeId),
-    // The admin web app mutates allocations out-of-band, so the worker app
-    // never sees an invalidateQueries call when a new allocation lands.
-    // Poll on a 30 s cadence and refetch when the app returns to the
-    // foreground so workers don't have to pull-to-refresh manually.
-    // Also force a refetch on every mount so the AsyncStorage-cached
-    // previous-session response can't lie to the worker.
-    refetchInterval: 30_000,
+    // Refetch when the app returns to the foreground so workers don't have
+    // to pull-to-refresh manually, and force a refetch on every mount so the
+    // AsyncStorage-cached previous-session response can't lie to the worker.
+    refetchInterval,
     refetchOnMount: 'always',
     staleTime: 0,
   });

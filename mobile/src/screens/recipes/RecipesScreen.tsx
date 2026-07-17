@@ -7,6 +7,7 @@ import { Card } from '@/components/Card';
 import { listRecipes, getRecipe, type Recipe } from '@/api/endpoints/recipes';
 import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 interface RecipeRowProps {
   recipe: Recipe;
@@ -42,11 +43,13 @@ interface RecipeDetailProps {
 }
 
 function RecipeDetailImpl({ recipe }: RecipeDetailProps): JSX.Element {
+  const refetchInterval = useSyncAwareRefetchInterval();
   const detailQuery = useQuery({
     queryKey: ['recipe', recipe.id],
     queryFn: () => getRecipe(recipe.id),
     enabled: Boolean(recipe.id),
     staleTime: 5 * 60_000,
+    refetchInterval,
   });
   const full: Recipe = detailQuery.data ?? recipe;
   const steps = useMemo(
@@ -93,6 +96,7 @@ function RecipeDetailImpl({ recipe }: RecipeDetailProps): JSX.Element {
 const RecipeDetail = memo(RecipeDetailImpl);
 
 function RecipesScreenImpl(): JSX.Element {
+  const refetchInterval = useSyncAwareRefetchInterval();
   const recipesQuery = useQuery({
     queryKey: ['recipes', 'all'],
     queryFn: listRecipes,
@@ -105,6 +109,7 @@ function RecipesScreenImpl(): JSX.Element {
     // the worker opens the Recipes tab.
     staleTime: 0,
     refetchOnMount: 'always',
+    refetchInterval,
   });
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);

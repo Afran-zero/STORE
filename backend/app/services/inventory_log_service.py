@@ -9,6 +9,8 @@ from app.repositories.inventory_log_repository import InventoryLogRepository
 from app.repositories.purchase_order_repository import PurchaseOrderRepository
 from app.repositories.recipe_repository import RecipeRepository
 from app.repositories.store_inventory_repository import StoreInventoryRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 class InventoryLogService:
@@ -50,7 +52,7 @@ class InventoryLogService:
         reference_id: Optional[str] = None,
         reason: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return await self.logs.insert(
+        log = await self.logs.insert(
             payload={
                 "businessId": business_id,
                 "ingredientId": ingredient_id,
@@ -65,6 +67,11 @@ class InventoryLogService:
                 "reason": reason,
             }
         )
+        await sync_service.publish(SyncEvent(
+            entity="inventory", action="updated", businessId=business_id, storeId=store_id,
+            recordId=ingredient_id, payload=None, actorUserId=worker_id or "",
+        ))
+        return log
 
     async def purchase(
         self,
@@ -368,23 +375,19 @@ class InventoryLogService:
             })
 
         # Best-effort inventory log entries (outside any transaction).
-        now = datetime.now(timezone.utc)
         for d in deductions:
-            await self.logs.insert(
-                payload={
-                    "businessId": business_id,
-                    "ingredientId": d["ingredientId"],
-                    "storeId": store_id,
-                    "workerId": worker_id,
-                    "action": "ALLOCATION",
-                    "quantity": -d["quantity"],
-                    "before": d["before"],
-                    "after": d["after"],
-                    "referenceType": "food_allocation",
-                    "referenceId": str(food_id),
-                    "reason": f"Allocated {quantity}× {food.get('name') or food_id}",
-                    "timestamp": now,
-                }
+            await self._write_log(
+                business_id=business_id,
+                ingredient_id=d["ingredientId"],
+                action="ALLOCATION",
+                quantity=-d["quantity"],
+                before=d["before"],
+                after=d["after"],
+                store_id=store_id,
+                worker_id=worker_id,
+                reference_type="food_allocation",
+                reference_id=str(food_id),
+                reason=f"Allocated {quantity}× {food.get('name') or food_id}",
             )
 
         return {

@@ -133,5 +133,6 @@ async def mark(
         status=target_status,
         store_id=payload.get("storeId"),
         note=payload.get("note"),
+        actor_user_id=current_user.userId or "",
     )
     return success_payload(record, message="Status updated")

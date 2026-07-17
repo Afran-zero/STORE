@@ -56,7 +56,7 @@ async def create_food(
 ):
     payload: dict[str, Any] = body.model_dump()
     try:
-        item = await service.create_food(business_id=_bid(current_user), payload=payload)
+        item = await service.create_food(business_id=_bid(current_user), payload=payload, actor_user_id=current_user.userId or "")
     except RecipeMissingForFoodError as exc:
         raise NotFoundError("RECIPE_NOT_FOUND", f"Recipe '{exc}' not found")
     except ValueError as exc:
@@ -73,7 +73,7 @@ async def update_food(
 ):
     payload = body.model_dump(exclude_none=True)
     try:
-        item = await service.update_food(business_id=_bid(current_user), food_id=food_id, payload=payload)
+        item = await service.update_food(business_id=_bid(current_user), food_id=food_id, payload=payload, actor_user_id=current_user.userId or "")
     except FoodNotFoundError:
         raise NotFoundError("FOOD_NOT_FOUND", "Food item not found")
     return success_payload(item)
@@ -86,7 +86,7 @@ async def delete_food(
     service: FoodService = Depends(_service),
 ):
     try:
-        await service.delete_food(business_id=_bid(current_user), food_id=food_id)
+        await service.delete_food(business_id=_bid(current_user), food_id=food_id, actor_user_id=current_user.userId or "")
     except FoodNotFoundError:
         raise NotFoundError("FOOD_NOT_FOUND", "Food item not found")
     return success_payload({"deleted": True})
@@ -99,7 +99,7 @@ async def recalculate_cost(
     service: FoodService = Depends(_service),
 ):
     try:
-        item = await service.recalculate_cost(business_id=_bid(current_user), food_id=food_id)
+        item = await service.recalculate_cost(business_id=_bid(current_user), food_id=food_id, actor_user_id=current_user.userId or "")
     except FoodNotFoundError:
         raise NotFoundError("FOOD_NOT_FOUND", "Food item not found")
     except RecipeMissingForFoodError as exc:

@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.repositories.food_repository import FoodRepository
+from app.schemas.sync import SyncEvent
 from app.services.recipe_service import IngredientNotFoundForRecipeError, RecipeNotFoundError, RecipeService
+from app.services.sync_service import sync_service
 
 
 class FoodNotFoundError(Exception):
@@ -28,7 +30,7 @@ class FoodService:
             raise FoodNotFoundError(food_id)
         return item
 
-    async def create_food(self, *, business_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_food(self, *, business_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         recipe_id = payload.get("recipeId")
         if not recipe_id:
             raise ValueError("recipeId is required")
@@ -49,9 +51,14 @@ class FoodService:
             "cost": cost,
             "estimatedProfit": profit,
         }
-        return await self.repo.create(business_id=business_id, payload=doc)
+        item = await self.repo.create(business_id=business_id, payload=doc)
+        await sync_service.publish(SyncEvent(
+            entity="food", action="created", businessId=business_id,
+            recordId=item["id"], payload=item, actorUserId=actor_user_id,
+        ))
+        return item
 
-    async def update_food(self, *, business_id: str, food_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_food(self, *, business_id: str, food_id: str, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         await self.get_food(business_id=business_id, food_id=food_id)
         update: Dict[str, Any] = {}
         for k in ("name", "category", "price", "assignedStores", "image", "status"):
@@ -63,14 +70,22 @@ class FoodService:
         item = await self.repo.update(business_id=business_id, food_id=food_id, payload=update)
         if not item:
             raise FoodNotFoundError(food_id)
+        await sync_service.publish(SyncEvent(
+            entity="food", action="updated", businessId=business_id,
+            recordId=food_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item
 
-    async def delete_food(self, *, business_id: str, food_id: str) -> None:
+    async def delete_food(self, *, business_id: str, food_id: str, actor_user_id: str) -> None:
         ok = await self.repo.delete(business_id=business_id, food_id=food_id)
         if not ok:
             raise FoodNotFoundError(food_id)
+        await sync_service.publish(SyncEvent(
+            entity="food", action="deleted", businessId=business_id,
+            recordId=food_id, payload=None, actorUserId=actor_user_id,
+        ))
 
-    async def recalculate_cost(self, *, business_id: str, food_id: str) -> Dict[str, Any]:
+    async def recalculate_cost(self, *, business_id: str, food_id: str, actor_user_id: str) -> Dict[str, Any]:
         food = await self.get_food(business_id=business_id, food_id=food_id)
         recipe_id = food.get("recipeId")
         if not recipe_id:
@@ -85,4 +100,8 @@ class FoodService:
         item = await self.repo.update(business_id=business_id, food_id=food_id, payload=update)
         if not item:
             raise FoodNotFoundError(food_id)
+        await sync_service.publish(SyncEvent(
+            entity="food", action="updated", businessId=business_id,
+            recordId=food_id, payload=item, actorUserId=actor_user_id,
+        ))
         return item

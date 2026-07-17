@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@/lib/query-helpers';
 import { storeKeys } from '@/api/queryKeys';
 import { apiClient } from '@/api/client';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 export type StoreType = 'RETAIL' | 'FOOD' | 'WAREHOUSE' | 'KITCHEN';
 
@@ -69,17 +70,21 @@ export function deleteStore(id: string): Promise<{ deleted: boolean }> {
 }
 
 export function useStores() {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: storeKeys.list({}),
     queryFn: () => listStores(),
+    refetchInterval,
   });
 }
 
 export function useStore(id: string | undefined) {
+  const refetchInterval = useSyncAwareRefetchInterval();
   return useQuery({
     queryKey: storeKeys.detail(id ?? ''),
     queryFn: () => getStore(id as string),
     enabled: Boolean(id),
+    refetchInterval,
   });
 }
 

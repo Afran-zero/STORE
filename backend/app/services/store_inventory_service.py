@@ -9,6 +9,8 @@ from bson.errors import InvalidId
 from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.ingredient_repository import IngredientRepository
 from app.repositories.store_inventory_repository import StoreInventoryRepository
+from app.schemas.sync import SyncEvent
+from app.services.sync_service import sync_service
 
 
 class StoreInventoryService:
@@ -251,6 +253,25 @@ class StoreInventoryService:
         store_id: str,
         ingredient_id: str,
         amount: float,
+        actor_user_id: str = "",
+    ) -> Dict[str, Any]:
+        result = await self._try_consume_pool(
+            business_id=business_id, store_id=store_id, ingredient_id=ingredient_id, amount=amount,
+        )
+        if result.get("ok"):
+            await sync_service.publish(SyncEvent(
+                entity="storeInventory", action="updated", businessId=business_id, storeId=store_id,
+                recordId=ingredient_id, payload=None, actorUserId=actor_user_id,
+            ))
+        return result
+
+    async def _try_consume_pool(
+        self,
+        *,
+        business_id: str,
+        store_id: str,
+        ingredient_id: str,
+        amount: float,
     ) -> Dict[str, Any]:
         """Allocate `amount` of an ingredient to ``store_id`` from the master pool.
 
@@ -348,6 +369,25 @@ class StoreInventoryService:
         return result
 
     async def refund_pool(
+        self,
+        *,
+        business_id: str,
+        store_id: str,
+        ingredient_id: str,
+        amount: float,
+        actor_user_id: str = "",
+    ) -> Dict[str, Any]:
+        result = await self._refund_pool(
+            business_id=business_id, store_id=store_id, ingredient_id=ingredient_id, amount=amount,
+        )
+        if result.get("ok"):
+            await sync_service.publish(SyncEvent(
+                entity="storeInventory", action="updated", businessId=business_id, storeId=store_id,
+                recordId=ingredient_id, payload=None, actorUserId=actor_user_id,
+            ))
+        return result
+
+    async def _refund_pool(
         self,
         *,
         business_id: str,

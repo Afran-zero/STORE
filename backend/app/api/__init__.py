@@ -18,9 +18,11 @@ from app.api.store_inventory import router as store_inventory_router
 from app.api.stores import router as stores_router
 from app.api.tickets import router as tickets_router
 from app.api.users import router as users_router
+from app.api.ws import router as ws_router
 
 
 api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(ws_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(stores_router)

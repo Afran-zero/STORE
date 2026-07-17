@@ -32,6 +32,7 @@ import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
 import { todayIso, isToday, formatClockTime as fmtTime } from '@/lib/dates';
 import { formatMoney, formatSignedMoney } from '@/lib/format';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 // ---------- Memoised list items ----------
 
@@ -103,11 +104,13 @@ function SalesScreenImpl(): JSX.Element {
   const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
   const [composerOpen, setComposerOpen] = useState(false);
+  const refetchInterval = useSyncAwareRefetchInterval();
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'store', storeId],
     queryFn: () => listSales(storeId || undefined),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const today = todayIso();
@@ -115,6 +118,7 @@ function SalesScreenImpl(): JSX.Element {
     queryKey: ['allocations', 'summary', storeId, today],
     queryFn: () => getStoreAllocationSummary(storeId, { start: today, end: today }),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const activeAllocations = useMemo<Allocation[]>(

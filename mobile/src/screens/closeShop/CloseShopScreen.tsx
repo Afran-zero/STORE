@@ -23,6 +23,7 @@ import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
 import { todayIso, formatClockTime as fmt, isToday } from '@/lib/dates';
 import { formatMoney, formatSignedMoney } from '@/lib/format';
+import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
 interface AllocationRowProps {
   allocation: Allocation;
@@ -76,34 +77,40 @@ function CloseShopScreenImpl(): JSX.Element {
   const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
   const today = useMemo(() => todayIso(), []);
+  const refetchInterval = useSyncAwareRefetchInterval();
 
   const attendanceQuery = useQuery({
     queryKey: ['attendance', 'today', user?.userId ?? ''],
     queryFn: getAttendanceToday,
+    refetchInterval,
   });
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'store', storeId],
     queryFn: () => listSales(storeId || undefined),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const allocationQuery = useQuery({
     queryKey: ['allocations', 'summary', storeId, today],
     queryFn: () => getStoreAllocationSummary(storeId, { start: today, end: today }),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const inventoryQuery = useQuery({
     queryKey: ['store-inventory', storeId],
     queryFn: () => getStoreInventory(storeId),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const lowStockQuery = useQuery({
     queryKey: ['store-low-stock', storeId],
     queryFn: () => getStoreLowStock(storeId),
     enabled: Boolean(storeId),
+    refetchInterval,
   });
 
   const todays: Sale[] = useMemo(

@@ -27,7 +27,11 @@ async def get_store(store_id: str, current_user: CurrentUser = Depends(get_curre
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_store(payload: StoreCreateRequest, current_user: CurrentUser = Depends(get_current_user)):
-    row = await service.create_store(business_id=current_user.businessId or "", payload=payload.model_dump(exclude_none=True))
+    row = await service.create_store(
+        business_id=current_user.businessId or "",
+        payload=payload.model_dump(exclude_none=True),
+        actor_user_id=current_user.userId or "",
+    )
     return success_payload(row, message="Store created")
 
 
@@ -37,6 +41,7 @@ async def update_store(store_id: str, payload: StoreUpdateRequest, current_user:
         business_id=current_user.businessId or "",
         store_id=store_id,
         payload=payload.model_dump(exclude_none=True),
+        actor_user_id=current_user.userId or "",
     )
     return success_payload(row, message="Store updated")
 
@@ -53,6 +58,7 @@ async def change_status(store_id: str, payload: StoreStatusUpdateRequest, curren
         business_id=current_user.businessId or "",
         store_id=store_id,
         payload={"status": new_status},
+        actor_user_id=current_user.userId or "",
     )
     return success_payload(row, message="Store status updated")
 
@@ -73,6 +79,7 @@ async def open_store(store_id: str, _: StoreOpenCloseRequest, current_user: Curr
         business_id=current_user.businessId or "",
         store_id=store_id,
         payload={"status": "OPEN"},
+        actor_user_id=current_user.userId or "",
     )
     return success_payload(row, message="Store opened")
 
@@ -83,6 +90,7 @@ async def close_store(store_id: str, _: StoreOpenCloseRequest, current_user: Cur
         business_id=current_user.businessId or "",
         store_id=store_id,
         payload={"status": "CLOSED"},
+        actor_user_id=current_user.userId or "",
     )
     return success_payload(row, message="Store closed")
 
