@@ -78,6 +78,7 @@ frontend/coverage/
 .puku-cli/worktrees/
 .claude/
 .claude/settings.local.json
+.specify/
 
 # Repo-level instructions that are personal/AI-assistant notes, not project source
 CLAUDE.md
