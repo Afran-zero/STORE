@@ -34,6 +34,109 @@ STORE is a multi-tenant smart multi-store ERP platform with three product surfac
 
 An AI Assistant module is designed to run through the backend and query operational data.
 
+## Clone & Setup
+
+Get the project running locally in a few minutes.
+
+### 1) Clone the repository
+
+Clone the default branch (currently `main`):
+
+```powershell
+git clone https://github.com/Afran-zero/STORE.git
+cd STORE
+```
+
+To clone a specific branch (e.g. `kaif`) directly:
+
+```powershell
+git clone -b kaif https://github.com/Afran-zero/STORE.git
+cd STORE
+```
+
+Or clone `main` and switch later:
+
+```powershell
+git clone https://github.com/Afran-zero/STORE.git
+cd STORE
+git fetch origin
+git checkout kaif
+```
+
+### 2) Prerequisites
+
+Make sure these are installed:
+
+- [Git](https://git-scm.com/)
+- [Python 3.13+](https://www.python.org/downloads/)
+- [Node.js 20+](https://nodejs.org/) and npm 10+
+- [MongoDB](https://www.mongodb.com/) (Atlas or local)
+- [Redis](https://redis.io/) (recommended for caching, rate limiting, background jobs)
+- [Expo Go](https://expo.dev/client) (only if you plan to run the mobile app on a device)
+
+### 3) Backend (Module 1)
+
+```powershell
+cd backend
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+# source .venv/bin/activate
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Create `backend/.env` (use the keys shown further down in this README under **Full Setup Guide**).
+
+Start it:
+
+```powershell
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- API: <http://localhost:8000/api/v1>
+- Swagger UI: <http://localhost:8000/docs>
+
+### 4) Web dashboard (Module 2)
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open <http://localhost:5173>.
+
+### 5) Mobile app (Module 3)
+
+```powershell
+cd mobile
+npm install
+npm run start
+```
+
+Scan the QR code with Expo Go, or use `npm run android` / `npm run ios`.
+
+### 6) Verify everything
+
+In three separate terminals, run:
+
+1. `cd backend && uvicorn app.main:app --reload`
+2. `cd frontend && npm run dev`
+3. `cd mobile && npm run start`
+
+Visit <http://localhost:8000/api/v1/health> and <http://localhost:5173> to confirm.
+
+### Tips for new contributors
+
+- **Default login** (development): `admin` / `admin123` (configurable via `ADMIN_USERNAME` and `ADMIN_PASSWORD` env vars).
+- **Each subproject is independent** — open `backend/`, `frontend/`, and `mobile/` in separate editor windows or workspaces.
+- **Generated files are gitignored** — you don't need to commit `.venv/`, `node_modules/`, `dist/`, `.expo/`, etc.
+- **Local-only state is gitignored** — `.claude/`, `.specify/`, `.puku-cli/`, and `CLAUDE.md` are intentionally not tracked.
+- **API contract lives at `docs/openapi.json`** — keep it in sync if you change backend routes.
+
 ## Monorepo Structure
 
 ```text
