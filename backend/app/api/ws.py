@@ -56,13 +56,26 @@ async def sync_websocket(websocket: WebSocket, token: str | None = None) -> None
         async for event in sync_service.subscribe(business_id):
             if not _is_authorized(event, role=role, assigned_store=assigned_store):
                 continue
-            await websocket.send_json(event.model_dump())
+            try:
+                # Use Pydantic's mode='json' to coerce datetimes / UUIDs to
+                # JSON-safe strings. Starlette's default encoder only handles
+                # primitives + a few stdlib types — raw datetime objects raise
+                # TypeError("Object of type datetime is not JSON serializable").
+                payload = event.model_dump(mode="json")
+            except Exception as exc:  # noqa: BLE001 - never tear down WS for one bad event
+                logger.warning("sync broadcast dropped malformed event: %s", exc)
+                continue
+            try:
+                await websocket.send_json(payload)
+            except Exception as exc:  # noqa: BLE001
+                logger.info("sync WS send failed (client likely disconnected): %s", exc)
+                return
             activity_event.set()
 
     async def idle_watchdog() -> None:
         # Guards against phantom ClientSubscriptions: a connection that lost
         # its client (e.g. a phone that lost signal without a clean TCP
-        # close) would otherwise hold a Redis pubsub subscription open
+        # close) would otherwise hold an in-process subscriber queue open
         # indefinitely, since neither receive_json() nor a quiet
         # sync_service.subscribe() stream will ever raise on their own.
         while True:
@@ -88,10 +101,15 @@ async def sync_websocket(websocket: WebSocket, token: str | None = None) -> None
             task.cancel()
         for task in done:
             exc = task.exception()
-            if exc is not None and not isinstance(exc, WebSocketDisconnect):
-                raise exc
+            if exc is not None and not isinstance(exc, (WebSocketDisconnect, asyncio.CancelledError)):
+                # Log and swallow — the broadcast loop may exit cleanly when
+                # Redis is unavailable; we don't want that to surface as an
+                # ASGI exception and tear the whole WS connection down.
+                logger.warning("sync WS task %s ended with exc: %s", task, exc)
     except WebSocketDisconnect:
         pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sync WS unhandled exc: %s", exc)
     finally:
         for task in tasks:
             task.cancel()

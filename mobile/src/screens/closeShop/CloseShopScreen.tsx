@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import { Alert, FlatList, StyleSheet, View, type ListRenderItem } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -21,7 +21,8 @@ import {
 import { getStoreLowStock, getStoreInventory } from '@/api/endpoints/storeInventory';
 import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
-import { todayIso, formatClockTime as fmt, isToday } from '@/lib/dates';
+import { formatClockTime as fmt, isToday } from '@/lib/dates';
+import { useToday } from '@/lib/use-today';
 import { formatMoney, formatSignedMoney } from '@/lib/format';
 import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
@@ -76,7 +77,17 @@ function CloseShopScreenImpl(): JSX.Element {
   const { user } = useAuth();
   const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
-  const today = useMemo(() => todayIso(), []);
+  const today = useToday();
+
+  // Day-rollover: refresh caches so a long-running session shows today's
+  // totals, not yesterday's.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ['attendance'] });
+    qc.invalidateQueries({ queryKey: ['sales'] });
+    qc.invalidateQueries({ queryKey: ['allocations'] });
+    qc.invalidateQueries({ queryKey: ['store-inventory'] });
+  }, [today, qc]);
+
   const refetchInterval = useSyncAwareRefetchInterval();
 
   const attendanceQuery = useQuery({

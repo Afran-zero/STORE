@@ -3335,6 +3335,31 @@
         }
       }
     },
+    "/api/v1/allocations/stale-active": {
+      "get": {
+        "tags": [
+          "allocations"
+        ],
+        "summary": "Stale Active",
+        "description": "ACTIVE allocations whose ``date`` is strictly before today.\n\nFrontend uses this to surface an \"open stock from previous day\" nudge\non the admin dashboard, prompting the owner to reclaim before today\nstarts. Data is never auto-deleted \u2014 workers must reclaim (which\nrefunds unused ingredients) or reverse allocations explicitly.",
+        "operationId": "stale_active_api_v1_allocations_stale_active_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/allocations/{allocation_id}": {
       "get": {
         "tags": [

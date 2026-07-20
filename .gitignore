@@ -19,6 +19,8 @@ secrets/
 # Dependencies
 # ----------------------------------------------------------------------
 node_modules/
+.venv/
+venv/
 backend/.venv/
 backend/venv/
 backend/env/

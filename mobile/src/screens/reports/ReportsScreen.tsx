@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View, type ListRenderItem } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AppScreen } from '@/components/AppScreen';
 import { Card } from '@/components/Card';
@@ -10,9 +10,10 @@ import { useAuth } from '@/context/AuthContext';
 import { listSales, type Sale } from '@/api/endpoints/sales';
 import { AppText } from '@/lib/typography';
 import { colors } from '@/lib/colors';
-import { todayIso, isInDateRange, type DateRange } from '@/lib/dates';
+import { isInDateRange, type DateRange } from '@/lib/dates';
 import { formatMoney, formatSignedMoney } from '@/lib/format';
 import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
+import { useToday } from '@/lib/use-today';
 
 type Range = DateRange;
 
@@ -83,10 +84,18 @@ const RangeChip = memo(function RangeChip({
 
 function ReportsScreenImpl(): JSX.Element {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
   const [range, setRange] = useState<Range>('today');
-  const today = useMemo(() => todayIso(), []);
+  const today = useToday();
   const refetchInterval = useSyncAwareRefetchInterval();
+
+  // Day-rollover: "today" filter must re-run, and the sales query must
+  // re-fetch against the new date if the user keeps the app open across
+  // midnight.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ['sales'] });
+  }, [today, qc]);
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'store', storeId],

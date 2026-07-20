@@ -3,6 +3,7 @@ import { KpiCard } from '@/components/shared/kpi-card';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { AlertTriangle } from 'lucide-react';
 import { useDashboard, useLowStockAnalytics } from '@/features/analytics/hooks/use-analytics';
 import { useStoreLowStock } from '@/features/store-inventory/hooks/use-store-inventory';
 import { useProjectedDailyForecast } from '@/features/forecast/hooks/use-forecast';
@@ -12,6 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { LowStockItem } from '@/api/endpoints/analytics';
+import { useStaleActiveAllocations } from '@/features/allocations/hooks/use-allocations';
 
 const FORECAST_COLORS = ['#09090b', '#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8', '#52525b', '#27272a'];
 
@@ -31,6 +33,7 @@ export function DashboardPage(): JSX.Element {
   const { data: forecast } = useProjectedDailyForecast(7, 6);
   const { data: sales = [] } = useSales(storeId ?? undefined);
   const { data: notifications = [] } = useNotifications(storeId ?? undefined);
+  const { data: staleActive } = useStaleActiveAllocations();
 
   const mergedLowStock: LowStockItem[] = (() => {
     const fromAnalytics = lowStockResp?.items ?? [];
@@ -73,6 +76,27 @@ export function DashboardPage(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      {staleActive && staleActive.count > 0 ? (
+        <div className="flex items-start gap-3 rounded-3xl border border-amber-300 bg-amber-50 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900">
+              {staleActive.count} unreclaimed allocation{staleActive.count === 1 ? '' : 's'} from previous days
+            </p>
+            <p className="mt-1 text-xs text-amber-800">
+              Stock is still on store shelves from days before {staleActive.today}. Reclaim or reverse them in the
+              Allocations page to refund ingredients back to the master pool. Data is never auto-deleted — this is
+              a nudge to keep stock counts accurate.
+            </p>
+          </div>
+          <Link
+            to="/allocations"
+            className="shrink-0 rounded-2xl bg-amber-700 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-800"
+          >
+            Review
+          </Link>
+        </div>
+      ) : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Today's revenue" value={isLoading ? '—' : `$${(data?.totals?.todayRevenue ?? 0).toFixed(2)}`} />
         <KpiCard label="Sales today" value={isLoading ? '—' : String(data?.totals?.todaySales ?? 0)} />

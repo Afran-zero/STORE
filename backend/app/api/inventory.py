@@ -5,7 +5,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.response import success_payload
 from app.database.client import get_database_dependency
 from app.dependencies.auth import CurrentUser, get_current_user
@@ -267,9 +267,16 @@ async def allocate_food(
         )
     except AllocationError as exc:
         msg = str(exc)
-        if "not found" in msg.lower():
+        lower = msg.lower()
+        if "not found" in lower:
             raise NotFoundError("FOOD_NOT_FOUND", msg)
-        raise ConflictError("INSUFFICIENT_STOCK", msg)
+        if "no active recipe" in lower or "recipe has no" in lower or "no usable ingredient" in lower:
+            raise NotFoundError("NO_ACTIVE_RECIPE", msg)
+        if "insufficient stock" in lower:
+            raise ConflictError("INSUFFICIENT_STOCK", msg)
+        if "quantity must be positive" in lower:
+            raise ValidationError(msg, code="INVALID_QUANTITY")
+        raise ConflictError("ALLOCATION_FAILED", msg)
     # Maintain the legacy response shape for the AllocateFoodCard widget:
     return success_payload(
         {

@@ -557,5 +557,43 @@ class AllocationService:
             annotated.append(entry)
         return annotated
 
+    async def list_stale_active(
+        self,
+        *,
+        business_id: str,
+        today: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """ACTIVE allocations whose `date` is strictly before today.
+
+        These represent stock on a store shelf that the worker has not yet
+        reclaimed. Showing a count + first few examples nudges the owner
+        to reclaim (which refunds ingredients to the master pool) before
+        the clock-in for today. End-of-day stock is never auto-deleted;
+        that would erase audit history and risk double-counting sales.
+        """
+        rows = await self.allocations.list(
+            business_id=business_id,
+            status="ACTIVE",
+            end_date=today or self._today_iso(),
+        )
+        stale: List[Dict[str, Any]] = []
+        today_str = today or self._today_iso()
+        for row in rows:
+            date_str = str(row.get("date") or "")
+            # `list(...)` with `end_date=today` is inclusive; drop today's
+            # allocations so we only flag *previous-day* open stock.
+            if date_str and date_str >= today_str:
+                continue
+            entry = dict(row)
+            qty = float(row.get("quantity") or 0)
+            sold = await self.allocations.sold_for_allocation(allocation=row)
+            entry["remaining"] = max(qty - sold, 0)
+            stale.append(entry)
+        return {
+            "today": today_str,
+            "count": len(stale),
+            "rows": stale[:10],
+        }
+
 
 __all__ = ["AllocationService", "AllocationError"]

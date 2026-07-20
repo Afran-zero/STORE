@@ -4,6 +4,7 @@ import {
   createAllocation,
   deleteAllocation,
   getAllocation,
+  getStaleActiveAllocations,
   getStoreAllocationSummary,
   listAllocations,
   reclaimAllocation,
@@ -11,6 +12,7 @@ import {
   type Allocation,
   type AllocationCreateRequest,
   type AllocationUpdateRequest,
+  type StaleActiveSummary,
 } from '@/api/endpoints/allocations';
 import { allocationKeys } from '@/api/queryKeys';
 import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
@@ -112,5 +114,14 @@ export function useReclaimAllocation() {
       qc.invalidateQueries({ queryKey: ['analytics', 'store-summary'] });
       qc.invalidateQueries({ queryKey: ['sales'] });
     },
+  });
+}
+
+export function useStaleActiveAllocations() {
+  const refetchInterval = useSyncAwareRefetchInterval(15_000);
+  return useQuery<StaleActiveSummary>({
+    queryKey: ['allocations', 'stale-active'],
+    queryFn: () => getStaleActiveAllocations(),
+    refetchInterval,
   });
 }

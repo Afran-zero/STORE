@@ -36,7 +36,8 @@ import { listSales, recordSale, type Sale } from '@/api/endpoints/sales';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
 import { AppText } from '@/lib/typography';
-import { todayIso, formatClockTime } from '@/lib/dates';
+import { formatClockTime } from '@/lib/dates';
+import { useToday } from '@/lib/use-today';
 import { formatMoney } from '@/lib/format';
 import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
 
@@ -137,7 +138,17 @@ function HomeScreenImpl(): JSX.Element {
   const nav = useNavigation<Nav>();
   const qc = useQueryClient();
   const storeId = user?.assignedStore ?? '';
-  const today = useMemo(() => todayIso(), []);
+  const today = useToday();
+
+  // When the local date rolls over, drop stale per-day query caches so a
+  // long-running app doesn't display yesterday's totals under today's heading.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ['attendance'] });
+    qc.invalidateQueries({ queryKey: ['sales'] });
+    qc.invalidateQueries({ queryKey: ['allocations'] });
+    qc.invalidateQueries({ queryKey: ['store-inventory'] });
+    qc.invalidateQueries({ queryKey: ['store-needs-today'] });
+  }, [today, qc]);
 
   const refetchInterval = useSyncAwareRefetchInterval();
   const attendanceRefetchInterval = useSyncAwareRefetchInterval(60_000);
@@ -411,7 +422,7 @@ const keyExtractor = useCallback((a: Allocation) => a.foodItemId, []);
             onPress={() => nav.navigate('Attendance')}
             style={({ pressed }) => [styles.kpiTile, styles.kpiAccent, pressed ? styles.pressed : null]}
           >
-            <AppText variant="overline">Clock status</AppText>
+            <AppText variant="overline" numberOfLines={1}>Clock status</AppText>
             <View style={styles.chipTop}>
               <StatusChip
                 tone="solid"
@@ -427,31 +438,39 @@ const keyExtractor = useCallback((a: Allocation) => a.foodItemId, []);
               />
             </View>
             <View style={styles.kpiTimeRow}>
-              <View>
-                <AppText variant="overline" faint>In</AppText>
-                <AppText variant="heading">{formatClockTime(attendance?.clockIn)}</AppText>
+              <View style={styles.kpiTimeCell}>
+                <AppText variant="overline" faint numberOfLines={1}>In</AppText>
+                <AppText variant="heading" numberOfLines={1} adjustsFontSizeToFit>
+                  {formatClockTime(attendance?.clockIn)}
+                </AppText>
               </View>
-              <View>
-                <AppText variant="overline" faint>Out</AppText>
-                <AppText variant="heading">{formatClockTime(attendance?.clockOut)}</AppText>
+              <View style={styles.kpiTimeCell}>
+                <AppText variant="overline" faint numberOfLines={1}>Out</AppText>
+                <AppText variant="heading" numberOfLines={1} adjustsFontSizeToFit>
+                  {formatClockTime(attendance?.clockOut)}
+                </AppText>
               </View>
             </View>
           </Pressable>
 
-          <Card>
-            <AppText variant="overline">Today’s allocation</AppText>
-            <AppText variant="metric" style={styles.metricTop}>
+          <Card style={styles.kpiTile}>
+            <AppText variant="overline" numberOfLines={1}>Today’s allocation</AppText>
+            <AppText variant="metric" style={styles.metricTop} numberOfLines={1} adjustsFontSizeToFit>
               {activeAllocated}
             </AppText>
-            <AppText variant="caption">{activeAllocations.length} batch(es)</AppText>
+            <AppText variant="caption" numberOfLines={1}>{activeAllocations.length} batch(es)</AppText>
             <View style={styles.kpiTimeRow}>
-              <View>
-                <AppText variant="overline" faint>Sold</AppText>
-                <AppText variant="heading">{soldFromSummary || totalSoldToday}</AppText>
+              <View style={styles.kpiTimeCell}>
+                <AppText variant="overline" faint numberOfLines={1}>Sold</AppText>
+                <AppText variant="heading" numberOfLines={1} adjustsFontSizeToFit>
+                  {soldFromSummary || totalSoldToday}
+                </AppText>
               </View>
-              <View>
-                <AppText variant="overline" faint>Left</AppText>
-                <AppText variant="heading">{remaining}</AppText>
+              <View style={styles.kpiTimeCell}>
+                <AppText variant="overline" faint numberOfLines={1}>Left</AppText>
+                <AppText variant="heading" numberOfLines={1} adjustsFontSizeToFit>
+                  {remaining}
+                </AppText>
               </View>
             </View>
           </Card>
@@ -610,18 +629,25 @@ const styles = StyleSheet.create({
   kpiRow: { flexDirection: 'row', gap: 14 },
   kpiTile: {
     flex: 1,
-    padding: 18,
+    minWidth: 0,
+    padding: 16,
     borderRadius: 16,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    gap: 10,
+    gap: 8,
   },
   kpiAccent: { backgroundColor: colors.accent },
   kpiTimeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: 10,
+    gap: 8,
+  },
+  kpiTimeCell: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
 
   // Quick actions

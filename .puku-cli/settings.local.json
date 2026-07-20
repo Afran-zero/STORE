@@ -46,7 +46,29 @@
       "Bash(python -c \":*)",
       "Bash(python -c \"import asyncio; from app.database.client import get_database;:*)",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\(''app/api/inventory.py''\\).read\\(\\)\\); print\\(''inventory.py OK''\\)\")",
+      "Bash(where redis-server:*)",
+      "Bash(tasklist /FI 'IMAGENAME eq redis-server.exe')",
+      "Bash(.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\(''app/services/sync_service.py''\\).read\\(\\)\\); ast.parse\\(open\\(''app/api/ws.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_sync_service.py -q)",
+      "Bash(.venv/Scripts/python.exe -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\), f\\) for f in ['app/services/sync_service.py','app/core/redis_client.py','app/main.py','app/api/ws.py']]; import app.main; print\\('all imports OK'\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_sync_service.py -v)",
+      "Bash(.venv/Scripts/python.exe -c \"\nimport asyncio\nfrom app.services.sync_service import sync_service\nfrom app.schemas.sync import SyncEvent\nasync def main\\(\\):\n    agen = sync_service.subscribe\\('demo'\\)\n    t = asyncio.create_task\\(agen.__anext__\\(\\)\\)\n    await asyncio.sleep\\(0.05\\)\n    await sync_service.publish\\(SyncEvent\\(entity='inventory', action='updated', businessId='demo', recordId='r1', actorUserId='u1', payload={'x':1}\\)\\)\n    e = await asyncio.wait_for\\(t, timeout=1\\)\n    print\\('PUBLISHED/RECEIVED OK:', e.entity, e.recordId\\)\n    aclose_result = await asyncio.wait_for\\(agen.aclose\\(\\), timeout=1\\)\n    print\\('CLOSE OK:', aclose_result\\)\nasyncio.run\\(main\\(\\)\\)\n\" 2>&1)",
+      "Bash(find /g/STORE/frontend/src -name *.tsx -path */tickets/* -o -name *.ts -path */tickets/*)",
+      "Bash(.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\(''app/services/allocation_service.py''\\).read\\(\\)\\); ast.parse\\(open\\(''app/api/allocations.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(.venv/Scripts/python.exe -c \":*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbi1oYXJkY29kZWQiLCJidXNpbmVzc0lkIjoiYnVzaW5lc3MtZGVmYXVsdCIsInJvbGUiOiJPV05FUiIsImFzc2lnbmVkU3RvcmUiOm51bGwsIm5hbWUiOiJTdG9yZSBBZG1pbiIsImVtYWlsIjoiYWRtaW4iLCJleHAiOjE3ODQ1ODM2MzZ9.HojMzcuMSBPI4hcTC0A7i7BX1x__vsXbYK0sjSqF7DE\" curl -s http://127.0.0.1:8000/api/v1/tickets -H \"Authorization: Bearer $TOKEN\")",
+      "Read(//tmp/**)",
+      "Bash(git --no-pager diff backend/app/services/allocation_service.py backend/app/services/sync_service.py)",
+      "Bash(git diff:*)",
+      "Bash(git:*)",
+      "Bash(GIT_PAGER=cat git diff backend/app/services/allocation_service.py)",
+      "Bash(tee /tmp/d.txt)",
+      "Bash(find /g/STORE/backend -path */api/auth* -name *.py)"
     ]
   }
 }

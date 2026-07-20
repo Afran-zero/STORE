@@ -15,7 +15,9 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "usesCleartextTraffic": true
+    },
     "web": {
       "bundler": "metro"
     },

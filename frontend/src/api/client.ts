@@ -45,11 +45,11 @@ async function refreshSession(instance: AxiosInstance): Promise<string | null> {
 
   isRefreshing = true;
   try {
-    const response = await instance.post<ApiSuccess<{ accessToken: string; refreshToken: string }>>('/api/v1/auth/refresh-token', {
+    const response = await instance.post<{ accessToken: string; refreshToken: string }>('/api/v1/auth/refresh-token', {
       refreshToken,
     });
-    accessToken = response.data.data.accessToken;
-    refreshToken = response.data.data.refreshToken;
+    accessToken = response.data.accessToken;
+    refreshToken = response.data.refreshToken;
     flushQueue(accessToken);
     return accessToken;
   } catch {

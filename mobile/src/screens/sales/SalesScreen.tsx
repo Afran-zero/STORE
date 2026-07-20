@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   Modal,
@@ -30,9 +30,10 @@ import {
 } from '@/api/endpoints/allocations';
 import { ApiException } from '@/types/api';
 import { colors } from '@/lib/colors';
-import { todayIso, isToday, formatClockTime as fmtTime } from '@/lib/dates';
+import { isToday, formatClockTime as fmtTime } from '@/lib/dates';
 import { formatMoney, formatSignedMoney } from '@/lib/format';
 import { useSyncAwareRefetchInterval } from '@/lib/sync/useSyncAwareRefetchInterval';
+import { useToday } from '@/lib/use-today';
 
 // ---------- Memoised list items ----------
 
@@ -105,6 +106,14 @@ function SalesScreenImpl(): JSX.Element {
   const storeId = user?.assignedStore ?? '';
   const [composerOpen, setComposerOpen] = useState(false);
   const refetchInterval = useSyncAwareRefetchInterval();
+  const today = useToday();
+
+  // Day-rollover: today's "sales" and "allocations" filters must re-run, and
+  // queries keyed by today must be refetched with the new date.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ['sales'] });
+    qc.invalidateQueries({ queryKey: ['allocations'] });
+  }, [today, qc]);
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'store', storeId],
@@ -112,8 +121,6 @@ function SalesScreenImpl(): JSX.Element {
     enabled: Boolean(storeId),
     refetchInterval,
   });
-
-  const today = todayIso();
   const allocationQuery = useQuery({
     queryKey: ['allocations', 'summary', storeId, today],
     queryFn: () => getStoreAllocationSummary(storeId, { start: today, end: today }),

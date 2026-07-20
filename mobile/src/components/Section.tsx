@@ -30,15 +30,34 @@ interface MetricProps {
   label: string;
   value: string;
   accent?: boolean;
+  /**
+   * `size` controls how the value renders:
+   *   - 'compact' (default) — used in 3-up rows on small screens; auto-shrinks to fit.
+   *   - 'metric' — full 36px display number, for hero KPIs only.
+   */
+  size?: 'compact' | 'metric';
 }
 
-function MetricImpl({ label, value, accent }: MetricProps): JSX.Element {
+function MetricImpl({ label, value, accent, size = 'compact' }: MetricProps): JSX.Element {
   return (
     <View style={styles.metric}>
-      <AppText variant="overline" style={accent ? styles.accentLabel : undefined}>
+      <AppText
+        variant="overline"
+        numberOfLines={1}
+        style={accent ? styles.accentLabel : undefined}
+      >
         {label}
       </AppText>
-      <AppText variant="metric" style={accent ? styles.accentValue : undefined}>
+      <AppText
+        variant={size === 'metric' ? 'metric' : 'bodyBold'}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+        style={[
+          accent ? styles.accentValue : undefined,
+          size === 'compact' ? styles.compactValue : undefined,
+        ]}
+      >
         {value}
       </AppText>
     </View>
@@ -80,10 +99,17 @@ const styles = StyleSheet.create({
   },
   metric: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
   },
   accentLabel: { color: colors.text },
   accentValue: { color: colors.text },
+  compactValue: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',

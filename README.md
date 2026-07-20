@@ -103,7 +103,7 @@ APP_CORS_ORIGINS=http://localhost:5173,http://localhost:19006
 Start backend:
 
 ```powershell
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Useful backend endpoints:

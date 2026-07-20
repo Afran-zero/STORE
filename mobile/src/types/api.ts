@@ -14,10 +14,10 @@ export class ApiException extends Error {
   code: string;
   details?: Record<string, unknown>;
 
-  constructor(message: string, code: string, details?: Record<string, unknown>) {
+  constructor(message: string, code: string, details?: Record<string, unknown> | object) {
     super(message);
     this.name = 'ApiException';
     this.code = code;
-    this.details = details;
+    this.details = details as Record<string, unknown> | undefined;
   }
 }

@@ -14,19 +14,11 @@ instance on the standard port; override via env vars same as the app).
 Scope note: this drives the real ASGI application (real JWT auth, real RBAC
 event filtering, real async pub/sub fan-out logic in SyncService) via
 Starlette's in-process TestClient WebSocket support, run across a thread
-pool to get genuine concurrency. It substitutes an in-process fake for the
-Redis transport (the same fake used in tests/test_sync_service.py) rather
-than a real standalone Redis server, because no system Redis/Docker is
-available in this environment. This exercises 100% of the application's own
-concurrency-handling code (the part SC-004 cares about); it does not
-additionally exercise a real Redis server's own throughput characteristics,
-which is a separate, well-understood concern outside this feature's code.
-To run against a real Redis, just remove the `redis_manager._client = ...`
-override below and start the app with a real REDIS_URL as usual.
+pool to get genuine concurrency. Real-time sync now uses an in-process
+asyncio fan-out (see app/services/sync_service.py) — no external broker.
 """
 from __future__ import annotations
 
-import asyncio
 import os
 import statistics
 import sys
@@ -44,49 +36,10 @@ CONCURRENT_CONNECTIONS = 60
 LATENCY_TARGET_SECONDS = 5.0
 
 
-class FakePubSub:
-    def __init__(self, redis: "FakeRedis") -> None:
-        self._redis = redis
-        self._queue: asyncio.Queue = asyncio.Queue()
-
-    async def subscribe(self, channel: str) -> None:
-        self._redis.subscribers.setdefault(channel, []).append(self._queue)
-
-    async def unsubscribe(self, channel: str) -> None:
-        subs = self._redis.subscribers.get(channel, [])
-        if self._queue in subs:
-            subs.remove(self._queue)
-
-    async def aclose(self) -> None:
-        pass
-
-    async def listen(self):
-        while True:
-            yield await self._queue.get()
-
-
-class FakeRedis:
-    def __init__(self) -> None:
-        self.subscribers: dict[str, list[asyncio.Queue]] = {}
-
-    async def publish(self, channel: str, data: str) -> None:
-        for queue in self.subscribers.get(channel, []):
-            await queue.put({"type": "message", "channel": channel, "data": data})
-
-    def pubsub(self) -> FakePubSub:
-        return FakePubSub(self)
-
-    async def aclose(self) -> None:
-        pass
-
-
 def main() -> int:
-    from app.core.redis_client import redis_manager
     from app.core.security import create_access_token
     from app.main import app
     from starlette.testclient import TestClient
-
-    redis_manager._client = FakeRedis()
 
     business_id = "load-test-business"
     token = create_access_token({"sub": "load-test-owner", "businessId": business_id, "role": "OWNER"})

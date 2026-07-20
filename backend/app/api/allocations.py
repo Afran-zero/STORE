@@ -89,6 +89,24 @@ async def store_summary(
     return success_payload(payload)
 
 
+@router.get("/stale-active")
+async def stale_active(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: AllocationService = Depends(_service),
+):
+    """ACTIVE allocations whose ``date`` is strictly before today.
+
+    Frontend uses this to surface an "open stock from previous day" nudge
+    on the admin dashboard, prompting the owner to reclaim before today
+    starts. Data is never auto-deleted — workers must reclaim (which
+    refunds unused ingredients) or reverse allocations explicitly.
+    """
+    payload = await service.list_stale_active(
+        business_id=current_user.businessId or "",
+    )
+    return success_payload(payload)
+
+
 @router.get("/{allocation_id}")
 async def get_allocation(
     allocation_id: str,

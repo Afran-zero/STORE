@@ -96,7 +96,17 @@ class SyncClient {
       this.scheduleReconnect();
     };
 
-    socket.onerror = () => {
+    socket.onerror = (event) => {
+      // Surface the connection failure for easier diagnostics on real devices.
+      // The banner UI shows a generic "network error" — the console message
+      // is what tells you whether it's a wrong IP, missing cleartextTraffic,
+      // server down, or an expired token.
+      // eslint-disable-next-line no-console
+      console.warn('[sync] WebSocket error', {
+        url: socket.url,
+        readyState: socket.readyState,
+        event,
+      });
       socket.close();
     };
   }

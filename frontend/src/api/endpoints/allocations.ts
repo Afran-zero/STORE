@@ -120,3 +120,17 @@ export async function getStoreAllocationSummary(
 ): Promise<StoreAllocationSummary> {
   return apiClient.get(`/api/v1/allocations/store/${storeId}/summary${qs(range)}`);
 }
+
+export interface StaleActiveRow extends Allocation {
+  remaining: number;
+}
+
+export interface StaleActiveSummary {
+  today: string;
+  count: number;
+  rows: StaleActiveRow[];
+}
+
+export async function getStaleActiveAllocations(): Promise<StaleActiveSummary> {
+  return apiClient.get('/api/v1/allocations/stale-active');
+}

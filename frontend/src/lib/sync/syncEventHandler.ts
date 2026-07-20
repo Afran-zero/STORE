@@ -48,7 +48,9 @@ export function resolveInvalidations(event: SyncEvent): QueryKey[] {
     case 'attendance':
       return [attendanceKeys.today];
     case 'ticket':
-      return [ticketKeys.list(), ticketKeys.detail(event.recordId)];
+      // Prefix invalidation covers the unfiltered list, every status-filtered
+      // list, and the selected ticket detail query.
+      return [['tickets'], ticketKeys.list(), ticketKeys.detail(event.recordId)];
     case 'store':
       return [storeKeys.list(), storeKeys.detail(event.recordId)];
     case 'allocation':
